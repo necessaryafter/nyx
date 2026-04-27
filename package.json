@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "infra": "podman compose up -d",
+    "dev": "powershell -ExecutionPolicy Bypass -File dev.ps1"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "pino-pretty": "^13.1.3"
+  }
+}

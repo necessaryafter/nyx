@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep:*)",
+      "Bash(gh search:*)",
+      "WebFetch(domain:raphaelai.org)",
+      "WebFetch(domain:altankorayy.github.io)",
+      "WebFetch(domain:api.raphaelai.org)",
+      "WebFetch(domain:medium.com)"
+    ]
+  }
+}

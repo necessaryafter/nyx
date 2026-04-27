@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+/*
+ * Nyx Design Tokens
+ * Light/dark theming via CSS custom properties
+ */
+
+/* ── Light mode (default) ────────────────────────── */
+:root {
+  color-scheme: light;
+
+  --nyx-void: #FFFFFF;
+  --nyx-deep: #FAFAFA;
+  --nyx-surface: #F4F4F5;
+  --nyx-elevated: #E4E4E7;
+  --nyx-hover: #D4D4D8;
+
+  --nyx-text-primary: #09090B;
+  --nyx-text-secondary: #52525B;
+  --nyx-text-muted: #A1A1AA;
+
+  --nyx-border: #E4E4E7;
+
+  --nyx-cyan-400: #0EA5E9;
+  --nyx-cyan-500: #0284C7;
+
+  --nyx-orange-400: #F97316;
+  --nyx-orange-500: #EA580C;
+  --nyx-orange-600: #C2410C;
+
+  --nyx-success: #059669;
+  --nyx-warning: #D97706;
+  --nyx-error: #DC2626;
+
+  --nyx-cyan-900: #164E63;
+
+  --nyx-selection-bg: rgba(14, 165, 233, 0.2);
+  --nyx-selection-color: #09090B;
+
+  --nyx-gradient-from: #0EA5E9;
+  --nyx-gradient-to: #F97316;
+
+  --nyx-grid-dot: #A1A1AA;
+}
+
+/* ── Dark mode ───────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+
+  --nyx-void: #09090B;
+  --nyx-deep: #0C0C0F;
+  --nyx-surface: #141418;
+  --nyx-elevated: #1C1C22;
+  --nyx-hover: #25252D;
+
+  --nyx-text-primary: #FAFAFA;
+  --nyx-text-secondary: #A1A1AA;
+  --nyx-text-muted: #71717A;
+
+  --nyx-border: #27272A;
+
+  --nyx-cyan-400: #22D3EE;
+  --nyx-cyan-500: #06B6D4;
+
+  --nyx-orange-400: #FB923C;
+  --nyx-orange-500: #F97316;
+  --nyx-orange-600: #EA580C;
+
+  --nyx-success: #10B981;
+  --nyx-warning: #F59E0B;
+  --nyx-error: #EF4444;
+
+  --nyx-cyan-900: #083344;
+
+  --nyx-selection-bg: rgba(6, 182, 212, 0.25);
+  --nyx-selection-color: #FAFAFA;
+
+  --nyx-gradient-from: #22D3EE;
+  --nyx-gradient-to: #FB923C;
+
+  --nyx-grid-dot: #71717A;
+}
+
+@theme {
+  /* Backgrounds */
+  --color-nyx-void: var(--nyx-void);
+  --color-nyx-deep: var(--nyx-deep);
+  --color-nyx-surface: var(--nyx-surface);
+  --color-nyx-elevated: var(--nyx-elevated);
+  --color-nyx-hover: var(--nyx-hover);
+
+  /* Primary — Cyan */
+  --color-nyx-cyan-400: var(--nyx-cyan-400);
+  --color-nyx-cyan-500: var(--nyx-cyan-500);
+
+  /* Accent — Orange */
+  --color-nyx-orange-400: var(--nyx-orange-400);
+  --color-nyx-orange-500: var(--nyx-orange-500);
+  --color-nyx-orange-600: var(--nyx-orange-600);
+
+  /* Text */
+  --color-nyx-text-primary: var(--nyx-text-primary);
+  --color-nyx-text-secondary: var(--nyx-text-secondary);
+  --color-nyx-text-muted: var(--nyx-text-muted);
+
+  /* Borders */
+  --color-nyx-border: var(--nyx-border);
+
+  /* Status */
+  --color-nyx-success: var(--nyx-success);
+  --color-nyx-warning: var(--nyx-warning);
+  --color-nyx-error: var(--nyx-error);
+
+  /* Extra */
+  --color-nyx-cyan-900: var(--nyx-cyan-900);
+
+  /* Fonts */
+  --font-display: "Syne", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-logo: "Josefin Sans", sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-nyx-void);
+  color: var(--color-nyx-text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: var(--nyx-selection-bg);
+  color: var(--nyx-selection-color);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--nyx-gradient-from), var(--nyx-gradient-to));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@keyframes clip-shake {
+  0%, 100% { transform: translate(0, 0) scale(var(--clip-zoom, 1)); }
+  25%  { transform: translate(calc(-1 * var(--clip-shake-px, 0px)), var(--clip-shake-px, 0px)) scale(var(--clip-zoom, 1)); }
+  75%  { transform: translate(var(--clip-shake-px, 0px), calc(-1 * var(--clip-shake-px, 0px))) scale(var(--clip-zoom, 1)); }
+}
+
+.animate-clip-shake {
+  animation: clip-shake 0.15s infinite;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee var(--duration, 40s) linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Range slider */
+.slider-nyx {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--nyx-border);
+  outline: none;
+}
+
+.slider-nyx::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--nyx-text-primary);
+  cursor: pointer;
+  border: 2px solid var(--nyx-void);
+  box-shadow: 0 0 0 2px var(--nyx-border);
+}
+
+.slider-nyx::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--nyx-text-primary);
+  cursor: pointer;
+  border: 2px solid var(--nyx-void);
+  box-shadow: 0 0 0 2px var(--nyx-border);
+}
+
+/* Hide number input arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}

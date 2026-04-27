@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Nyx — Automação de Vídeos Dark para YouTube</title>
+    <meta name="description" content="Transforme texto em vídeos dark prontos para o YouTube. Editor visual de nodes, TTS automatico, legendas karaoke. Configure uma vez, produza para sempre." />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Nyx — Configure once. Produce forever." />
+    <meta property="og:description" content="Automacao de vídeos dark: de texto a video publicavel em minutos." />
+    <meta property="og:type" content="website" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Nyx — Automacao de vídeos dark" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Josefin+Sans:wght@400&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <script>
+      (function(){try{var s=localStorage.getItem('nyx-theme');var d=window.matchMedia('(prefers-color-scheme:dark)').matches;var dark=s==='dark'||(s!=='light'&&d);if(dark){document.documentElement.classList.add('dark')}else{document.documentElement.classList.remove('dark')}}catch(e){}})();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

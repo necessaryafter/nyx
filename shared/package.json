@@ -1,0 +1,14 @@
+{
+  "name": "@nyx/shared",
+  "version": "1.0.0",
+  "private": true,
+  "module": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "@sentry/node": "^10.45.0",
+    "minio": "^8",
+    "pino": "^10"
+  }
+}
