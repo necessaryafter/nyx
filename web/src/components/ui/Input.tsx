@@ -1,56 +1,70 @@
-import { type InputHTMLAttributes, useState, useId } from "react";
+import { type InputHTMLAttributes, useState, useId, forwardRef } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "../../lib/cn";
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
-  label: string;
+  label?: string;
   error?: string;
+  prefix?: React.ReactNode;
+  suffix?: React.ReactNode;
 };
 
-export function Input({ label, error, type, className, ...props }: InputProps) {
-  const id = useId();
-  const [showPassword, setShowPassword] = useState(false);
-  const isPassword = type === "password";
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+  ({ label, error, type, className, prefix, suffix, ...props }, ref) => {
+    const id = useId();
+    const [showPassword, setShowPassword] = useState(false);
+    const isPassword = type === "password";
 
-  return (
-    <div className="space-y-1.5">
-      <label
-        htmlFor={id}
-        className="block text-sm font-medium text-nyx-text-secondary"
-      >
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          id={id}
-          type={isPassword && showPassword ? "text" : type}
-          className={cn(
-            "w-full rounded-lg border border-nyx-border bg-nyx-deep px-4 py-3 text-sm text-nyx-text-primary placeholder:text-nyx-text-muted",
-            "transition-all duration-150",
-            "focus:border-nyx-cyan-500 focus:outline-none focus:ring-[3px] focus:ring-nyx-cyan-500/20",
-            error &&
-              "border-nyx-error focus:border-nyx-error focus:ring-nyx-error/20",
-            isPassword && "pr-11",
-            className,
-          )}
-          {...props}
-        />
-        {isPassword && (
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-nyx-text-muted transition-colors hover:text-nyx-text-secondary"
-            tabIndex={-1}
-          >
-            {showPassword ? (
-              <EyeOff className="h-4 w-4" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-          </button>
+    return (
+      <div className="flex flex-col gap-1.5">
+        {label && (
+          <label htmlFor={id} className="label">
+            {label}
+          </label>
         )}
+        <div
+          className={cn(
+            "flex items-center gap-2 h-8 px-3",
+            "bg-nyx-base border border-nyx-line rounded-[3px]",
+            "transition-colors duration-150",
+            "focus-within:border-nyx-line-hi",
+            error && "border-nyx-red/50 focus-within:border-nyx-red/70",
+          )}
+        >
+          {prefix && (
+            <span className="text-nyx-3 shrink-0 flex items-center">{prefix}</span>
+          )}
+          <input
+            ref={ref}
+            id={id}
+            type={isPassword && showPassword ? "text" : type}
+            className={cn(
+              "flex-1 min-w-0 bg-transparent text-sm text-nyx-1",
+              "placeholder:text-nyx-3 font-body",
+              "outline-none border-none",
+              isPassword && "pr-2",
+              className,
+            )}
+            {...props}
+          />
+          {suffix && (
+            <span className="text-nyx-3 shrink-0 flex items-center">{suffix}</span>
+          )}
+          {isPassword && (
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              tabIndex={-1}
+              className="text-nyx-3 hover:text-nyx-2 transition-colors shrink-0"
+            >
+              {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+          )}
+        </div>
+        {error && <p className="text-xs text-nyx-red">{error}</p>}
       </div>
-      {error && <p className="text-xs text-nyx-error">{error}</p>}
-    </div>
-  );
-}
+    );
+  },
+);
+
+Input.displayName = "Input";

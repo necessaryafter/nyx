@@ -14,15 +14,13 @@ export function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    if (!session && !isPending) {
-      navigate("/login", { replace: true });
-    }
+    if (!session && !isPending) navigate("/login", { replace: true });
   }, [session, isPending, navigate]);
 
   if (isPending) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-nyx-void">
-        <Loader2 className="h-6 w-6 animate-spin text-nyx-text-muted" />
+      <div className="flex min-h-dvh items-center justify-center bg-nyx-void">
+        <Loader2 className="h-5 w-5 animate-spin text-nyx-3" />
       </div>
     );
   }
@@ -30,7 +28,7 @@ export function DashboardLayout() {
   if (!session) return null;
 
   return (
-    <div className="flex min-h-screen bg-nyx-void">
+    <div className="flex min-h-dvh bg-nyx-void">
       <Sidebar
         collapsed={collapsed}
         onToggle={toggle}
@@ -45,8 +43,8 @@ export function DashboardLayout() {
           user={session.user}
         />
 
-        <main className="flex-1 overflow-y-auto p-6 pb-20 md:pb-6 lg:p-8">
-          <div className="mx-auto max-w-7xl">
+        <main className="flex-1 overflow-y-auto p-5 pb-20 md:pb-5">
+          <div className="mx-auto max-w-6xl">
             <Outlet />
           </div>
         </main>

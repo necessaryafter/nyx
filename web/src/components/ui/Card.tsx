@@ -4,13 +4,17 @@ import { cn } from "../../lib/cn";
 type CardProps = {
   children: ReactNode;
   className?: string;
+  padding?: boolean;
+  interactive?: boolean;
 };
 
-export function Card({ children, className }: CardProps) {
+export function Card({ children, className, padding = true, interactive = false }: CardProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-nyx-border bg-nyx-surface p-6",
+        "nyx-panel",
+        padding && "p-4",
+        interactive && "transition-colors duration-150 cursor-pointer hover:border-nyx-line-hi hover:bg-nyx-overlay",
         className,
       )}
     >

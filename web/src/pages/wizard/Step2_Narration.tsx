@@ -116,7 +116,11 @@ export function Step2_Narration({
   const [audioAssetId, setAudioAssetId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => {
+    const idea = sessionStorage.getItem("nyx-idea");
+    if (idea) { sessionStorage.removeItem("nyx-idea"); return idea; }
+    return "";
+  });
   const [isAILoading, setIsAILoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>(AI_MODELS[0].id);
 

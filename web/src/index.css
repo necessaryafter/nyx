@@ -1,229 +1,347 @@
 @import "tailwindcss";
 
-/*
- * Nyx Design Tokens
- * Light/dark theming via CSS custom properties
- */
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  NYX — Design System v2                                       ║
+   ║  Dark only. Cinematic production console.                     ║
+   ╚══════════════════════════════════════════════════════════════╝ */
 
-/* ── Light mode (default) ────────────────────────── */
+/* ── Tokens ────────────────────────────────────────────────────── */
+
 :root {
-  color-scheme: light;
-
-  --nyx-void: #FFFFFF;
-  --nyx-deep: #FAFAFA;
-  --nyx-surface: #F4F4F5;
-  --nyx-elevated: #E4E4E7;
-  --nyx-hover: #D4D4D8;
-
-  --nyx-text-primary: #09090B;
-  --nyx-text-secondary: #52525B;
-  --nyx-text-muted: #A1A1AA;
-
-  --nyx-border: #E4E4E7;
-
-  --nyx-cyan-400: #0EA5E9;
-  --nyx-cyan-500: #0284C7;
-
-  --nyx-orange-400: #F97316;
-  --nyx-orange-500: #EA580C;
-  --nyx-orange-600: #C2410C;
-
-  --nyx-success: #059669;
-  --nyx-warning: #D97706;
-  --nyx-error: #DC2626;
-
-  --nyx-cyan-900: #164E63;
-
-  --nyx-selection-bg: rgba(14, 165, 233, 0.2);
-  --nyx-selection-color: #09090B;
-
-  --nyx-gradient-from: #0EA5E9;
-  --nyx-gradient-to: #F97316;
-
-  --nyx-grid-dot: #A1A1AA;
-}
-
-/* ── Dark mode ───────────────────────────────────── */
-.dark {
   color-scheme: dark;
 
-  --nyx-void: #09090B;
-  --nyx-deep: #0C0C0F;
-  --nyx-surface: #141418;
-  --nyx-elevated: #1C1C22;
-  --nyx-hover: #25252D;
+  /* Surfaces */
+  --nyx-void:    #0A0A0A;
+  --nyx-base:    #111111;
+  --nyx-raised:  #1A1A1A;
+  --nyx-overlay: #222222;
+  --nyx-hover:   #2A2A2A;
 
-  --nyx-text-primary: #FAFAFA;
-  --nyx-text-secondary: #A1A1AA;
-  --nyx-text-muted: #71717A;
+  /* Borders — visíveis, como Vercel */
+  --nyx-line:    #333333;
+  --nyx-line-hi: #484848;
 
-  --nyx-border: #27272A;
-
-  --nyx-cyan-400: #22D3EE;
-  --nyx-cyan-500: #06B6D4;
-
-  --nyx-orange-400: #FB923C;
-  --nyx-orange-500: #F97316;
-  --nyx-orange-600: #EA580C;
-
-  --nyx-success: #10B981;
-  --nyx-warning: #F59E0B;
-  --nyx-error: #EF4444;
-
-  --nyx-cyan-900: #083344;
-
-  --nyx-selection-bg: rgba(6, 182, 212, 0.25);
-  --nyx-selection-color: #FAFAFA;
-
-  --nyx-gradient-from: #22D3EE;
-  --nyx-gradient-to: #FB923C;
-
-  --nyx-grid-dot: #71717A;
-}
-
-@theme {
-  /* Backgrounds */
-  --color-nyx-void: var(--nyx-void);
-  --color-nyx-deep: var(--nyx-deep);
-  --color-nyx-surface: var(--nyx-surface);
-  --color-nyx-elevated: var(--nyx-elevated);
-  --color-nyx-hover: var(--nyx-hover);
-
-  /* Primary — Cyan */
-  --color-nyx-cyan-400: var(--nyx-cyan-400);
-  --color-nyx-cyan-500: var(--nyx-cyan-500);
-
-  /* Accent — Orange */
-  --color-nyx-orange-400: var(--nyx-orange-400);
-  --color-nyx-orange-500: var(--nyx-orange-500);
-  --color-nyx-orange-600: var(--nyx-orange-600);
+  /* Elevated border — top-light nos cards */
+  --nyx-border-top: rgba(255, 255, 255, 0.06);
 
   /* Text */
-  --color-nyx-text-primary: var(--nyx-text-primary);
-  --color-nyx-text-secondary: var(--nyx-text-secondary);
-  --color-nyx-text-muted: var(--nyx-text-muted);
+  --nyx-1: #EDEDED;
+  --nyx-2: #A1A1A1;
+  --nyx-3: #666666;
 
-  /* Borders */
-  --color-nyx-border: var(--nyx-border);
+  /* Accents */
+  --nyx-teal:  #2DD4BF;
+  --nyx-amber: #F59E0B;
+  --nyx-red:   #EF4444;
+  --nyx-green: #22C55E;
 
-  /* Status */
-  --color-nyx-success: var(--nyx-success);
-  --color-nyx-warning: var(--nyx-warning);
-  --color-nyx-error: var(--nyx-error);
-
-  /* Extra */
-  --color-nyx-cyan-900: var(--nyx-cyan-900);
-
-  /* Fonts */
+  /* Typography */
+  --font-logo:    "Josefin Sans", sans-serif;
   --font-display: "Syne", sans-serif;
-  --font-body: "DM Sans", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-  --font-logo: "Josefin Sans", sans-serif;
+  --font-body:    "Outfit", sans-serif;
+  --font-mono:    "JetBrains Mono", monospace;
+
+  --radius: 3px;
 }
 
-html {
-  scroll-behavior: smooth;
+/* ── Tailwind v4 theme registration ───────────────────────────── */
+
+@theme {
+  --color-nyx-void:    var(--nyx-void);
+  --color-nyx-base:    var(--nyx-base);
+  --color-nyx-raised:  var(--nyx-raised);
+  --color-nyx-overlay: var(--nyx-overlay);
+  --color-nyx-hover:   var(--nyx-hover);
+  --color-nyx-line:    var(--nyx-line);
+  --color-nyx-line-hi: var(--nyx-line-hi);
+  --color-nyx-1:       var(--nyx-1);
+  --color-nyx-2:       var(--nyx-2);
+  --color-nyx-3:       var(--nyx-3);
+  --color-nyx-teal:    var(--nyx-teal);
+  --color-nyx-amber:   var(--nyx-amber);
+  --color-nyx-red:     var(--nyx-red);
+  --color-nyx-green:   var(--nyx-green);
+  --font-logo:         var(--font-logo);
+  --font-display:      var(--font-display);
+  --font-body:         var(--font-body);
+  --font-mono:         var(--font-mono);
 }
+
+/* ── Base ──────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
 
 body {
   margin: 0;
-  background-color: var(--color-nyx-void);
-  color: var(--color-nyx-text-primary);
+  /* Cinematic void — very faint teal radiance at top, grain over everything */
+  background-color: var(--nyx-void);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 70% 35% at 50% -2%, rgba(45, 212, 191, 0.07) 0%, transparent 65%);
+  background-repeat: repeat, no-repeat;
+  background-size: 300px 300px, cover;
+  background-attachment: fixed, fixed;
+  color: var(--nyx-1);
   font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
 }
+
+/* ── Scrollbars ────────────────────────────────────────────────── */
+
+::-webkit-scrollbar       { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--nyx-line-hi);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--nyx-3); }
+
+/* ── Selection ─────────────────────────────────────────────────── */
 
 ::selection {
-  background-color: var(--nyx-selection-bg);
-  color: var(--nyx-selection-color);
+  background-color: rgba(45, 212, 191, 0.18);
+  color: var(--nyx-1);
 }
 
+/* ── Focus ─────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 1px solid rgba(45, 212, 191, 0.6);
+  outline-offset: 2px;
+}
+
+/* ── Elevated panel — top-light effect ────────────────────────── */
+/* Apply to cards, panels, modals */
+.nyx-panel {
+  background: var(--nyx-raised);
+  border: 1px solid var(--nyx-line);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 var(--nyx-border-top),
+    0 4px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Typography utilities ──────────────────────────────────────── */
+
+.label {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nyx-3);
+}
+
+.tabular {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--nyx-2);
+}
+
+/* Cinematic gradient text */
 .text-gradient {
-  background: linear-gradient(135deg, var(--nyx-gradient-from), var(--nyx-gradient-to));
+  background: linear-gradient(120deg, var(--nyx-teal) 0%, var(--nyx-amber) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-@keyframes clip-shake {
-  0%, 100% { transform: translate(0, 0) scale(var(--clip-zoom, 1)); }
-  25%  { transform: translate(calc(-1 * var(--clip-shake-px, 0px)), var(--clip-shake-px, 0px)) scale(var(--clip-zoom, 1)); }
-  75%  { transform: translate(var(--clip-shake-px, 0px), calc(-1 * var(--clip-shake-px, 0px))) scale(var(--clip-zoom, 1)); }
+/* ── Teal glow — for active/primary elements ───────────────────── */
+.nyx-glow {
+  box-shadow: 0 0 0 1px rgba(45, 212, 191, 0.3), 0 0 12px rgba(45, 212, 191, 0.08);
 }
 
-.animate-clip-shake {
-  animation: clip-shake 0.15s infinite;
+/* ── Status dots ───────────────────────────────────────────────── */
+
+.status-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-@keyframes marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+.status-dot[data-status="rendering"] {
+  background: var(--nyx-teal);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.status-dot[data-status="done"]             { background: var(--nyx-green); }
+.status-dot[data-status="failed"]           { background: var(--nyx-red); }
+.status-dot[data-status="draft"]            { background: var(--nyx-3); }
+.status-dot[data-status="audio_processing"] {
+  background: var(--nyx-amber);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.status-dot[data-status="audio_ready"],
+.status-dot[data-status="ready"]            { background: var(--nyx-amber); }
+
+/* ── Keyframes ─────────────────────────────────────────────────── */
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%       { opacity: 0.3; transform: scale(0.7); }
 }
 
-.animate-marquee {
-  animation: marquee var(--duration, 40s) linear infinite;
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.animate-marquee:hover {
-  animation-play-state: paused;
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* Range slider */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+
+.animate-fade-up  { animation: fade-up  0.22s ease-out both; }
+.animate-fade-in  { animation: fade-in  0.15s ease-out both; }
+.animate-spin     { animation: spin 0.8s linear infinite; }
+
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.16s; }
+.delay-4 { animation-delay: 0.22s; }
+
+/* ── Skeleton ──────────────────────────────────────────────────── */
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--nyx-raised)  25%,
+    var(--nyx-overlay) 50%,
+    var(--nyx-raised)  75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* ── Range slider ──────────────────────────────────────────────── */
+
 .slider-nyx {
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--nyx-border);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--nyx-line-hi);
   outline: none;
+  cursor: pointer;
 }
-
 .slider-nyx::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--nyx-text-primary);
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--nyx-1);
+  border: 1px solid var(--nyx-line-hi);
   cursor: pointer;
-  border: 2px solid var(--nyx-void);
-  box-shadow: 0 0 0 2px var(--nyx-border);
+  transition: background 0.15s;
 }
-
+.slider-nyx::-webkit-slider-thumb:hover { background: var(--nyx-teal); }
 .slider-nyx::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--nyx-text-primary);
-  cursor: pointer;
-  border: 2px solid var(--nyx-void);
-  box-shadow: 0 0 0 2px var(--nyx-border);
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--nyx-1);
+  border: 1px solid var(--nyx-line-hi);
 }
 
-/* Hide number input arrows */
+/* ── Number input ──────────────────────────────────────────────── */
+
 input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
+/* ── React Flow — themed ───────────────────────────────────────── */
+
+.react-flow__background {
+  background-color: var(--nyx-void) !important;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 60% 30% at 50% 0%, rgba(45,212,191,0.04) 0%, transparent 60%) !important;
+  background-repeat: repeat, no-repeat !important;
+  background-size: 300px 300px, cover !important;
 }
 
-input[type="number"] {
-  -moz-appearance: textfield;
+.react-flow__background svg { opacity: 0; }
+
+.react-flow__edge-path,
+.react-flow__connection-path {
+  stroke: var(--nyx-line-hi) !important;
+  stroke-width: 1.5 !important;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--nyx-teal) !important;
 }
 
-.nyx-flow-grid path {
-  stroke-dasharray: 2 10;
-  stroke-linecap: round;
+.react-flow__handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--nyx-base) !important;
+  border: 1.5px solid var(--nyx-line-hi) !important;
+  border-radius: 2px !important;
+  transition: border-color 0.15s, background 0.15s;
 }
+.react-flow__handle:hover,
+.react-flow__handle-connecting {
+  border-color: var(--nyx-teal) !important;
+  background: rgba(45, 212, 191, 0.1) !important;
+}
+
+.react-flow__controls {
+  background: var(--nyx-raised) !important;
+  border: 1px solid var(--nyx-line) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: inset 0 1px 0 var(--nyx-border-top) !important;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--nyx-line) !important;
+  color: var(--nyx-3) !important;
+  width: 28px !important;
+  height: 28px !important;
+  transition: color 0.15s, background 0.15s;
+}
+.react-flow__controls-button:last-child { border-bottom: none !important; }
+.react-flow__controls-button:hover {
+  background: var(--nyx-hover) !important;
+  color: var(--nyx-1) !important;
+}
+.react-flow__controls-button svg { fill: currentColor !important; }
+
+.react-flow__minimap {
+  background: var(--nyx-raised) !important;
+  border: 1px solid var(--nyx-line) !important;
+  border-radius: var(--radius) !important;
+}
+
+.nyx-flow-grid path { stroke-dasharray: 2 10; stroke-linecap: round; }
+
+/* ── Reduced motion ────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

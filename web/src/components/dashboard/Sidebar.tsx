@@ -6,31 +6,18 @@ import {
   FolderOpen,
   Film,
   Coins,
-  Store,
   Settings,
-  ChevronsLeft,
-  ChevronsRight,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
 
-const NAV_SECTIONS = [
-  {
-    label: "PRINCIPAL",
-    items: [
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Templates", href: "/templates", icon: LayoutTemplate },
-      { label: "Assets", href: "/assets", icon: FolderOpen },
-      { label: "Jobs", href: "/jobs", icon: Film },
-    ],
-  },
-  {
-    label: "CONTA",
-    items: [
-      { label: "Créditos", href: "/credits", icon: Coins },
-      { label: "Marketplace", href: "/marketplace", icon: Store },
-      { label: "Configurações", href: "/settings", icon: Settings },
-    ],
-  },
+const NAV = [
+  { label: "Dashboard",  href: "/dashboard",  icon: LayoutDashboard },
+  { label: "Templates",  href: "/templates",  icon: LayoutTemplate  },
+  { label: "Jobs",       href: "/jobs",        icon: Film            },
+  { label: "Assets",     href: "/assets",      icon: FolderOpen      },
+  { label: "Créditos",   href: "/credits",     icon: Coins           },
+  { label: "Config",     href: "/settings",    icon: Settings        },
 ];
 
 interface SidebarProps {
@@ -49,111 +36,107 @@ function NavContent({
 }: {
   collapsed: boolean;
   onToggle: () => void;
-  user: { name: string; image?: string | null };
+  user: SidebarProps["user"];
   onLinkClick?: () => void;
 }) {
-  const location = useLocation();
+  const { pathname } = useLocation();
 
   return (
     <nav
       className={cn(
-        "flex h-full flex-col border-r border-nyx-border bg-nyx-deep transition-[width] duration-250 ease-out",
-        collapsed ? "w-16" : "w-60",
+        "flex h-full flex-col",
+        "bg-nyx-base border-r border-nyx-line",
+        "transition-[width] duration-200 ease-out",
+        collapsed ? "w-12" : "w-48",
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 shrink-0 items-center border-b border-nyx-border px-4">
+      <div className={cn(
+        "flex h-11 shrink-0 items-center border-b border-nyx-line",
+        collapsed ? "justify-center px-0" : "px-4",
+      )}>
         <Link
-          to="/"
-          className="font-logo tracking-[0.2em] text-nyx-text-primary"
+          to="/dashboard"
+          className="font-logo text-sm font-semibold tracking-[0.18em] text-nyx-1 hover:text-nyx-teal transition-colors"
         >
           {collapsed ? "N" : "NYX"}
         </Link>
       </div>
 
-      {/* Nav sections */}
-      <div className="flex-1 overflow-y-auto py-4">
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.label} className="mb-4">
-            {!collapsed && (
-              <p className="mb-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-nyx-text-muted">
-                {section.label}
-              </p>
-            )}
-            {section.items.map((item) => {
-              const active = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  onClick={onLinkClick}
-                  title={collapsed ? item.label : undefined}
-                  className={cn(
-                    "mx-2 mb-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors duration-150",
-                    collapsed && "justify-center px-0",
-                    active
-                      ? "border-l-2 border-nyx-cyan-500 bg-nyx-cyan-900/30 text-nyx-text-primary"
-                      : "border-l-2 border-transparent text-nyx-text-secondary hover:bg-nyx-hover hover:text-nyx-text-primary",
-                  )}
-                >
-                  <item.icon className="h-5 w-5 shrink-0" />
-                  {!collapsed && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+      {/* Nav items */}
+      <div className="flex-1 overflow-y-auto py-2">
+        {NAV.map((item) => {
+          const active = pathname === item.href || pathname.startsWith(item.href + "/");
+          return (
+            <Link
+              key={item.href}
+              to={item.href}
+              onClick={onLinkClick}
+              title={collapsed ? item.label : undefined}
+              className={cn(
+                "relative flex items-center gap-3 mx-1 my-0.5 px-3 py-2 rounded-[3px]",
+                "text-xs font-display font-semibold tracking-wide uppercase",
+                "transition-colors duration-100",
+                active
+                  ? "bg-nyx-teal/10 text-nyx-teal"
+                  : "text-nyx-3 hover:text-nyx-2 hover:bg-nyx-raised",
+                collapsed && "justify-center px-0",
+              )}
+            >
+              {/* Active bar */}
+              {active && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-nyx-teal rounded-r-full" />
+              )}
+              <item.icon className={cn("shrink-0", collapsed ? "h-4 w-4" : "h-3.5 w-3.5")} />
+              {!collapsed && <span>{item.label}</span>}
+            </Link>
+          );
+        })}
       </div>
 
-      {/* User footer */}
-      <div className="border-t border-nyx-border p-3">
-        <div
+      {/* User + collapse */}
+      <div className="border-t border-nyx-line">
+        {/* User */}
+        <Link
+          to="/settings"
+          onClick={onLinkClick}
           className={cn(
-            "flex items-center gap-3",
+            "flex items-center gap-2.5 p-3 transition-colors hover:bg-nyx-raised",
             collapsed && "justify-center",
           )}
         >
           {user.image ? (
-            <img
-              src={user.image}
-              alt=""
-              className="h-8 w-8 shrink-0 rounded-full"
-            />
+            <img src={user.image} alt="" className="h-6 w-6 rounded-full shrink-0 ring-1 ring-nyx-line" />
           ) : (
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-nyx-elevated text-xs font-medium text-nyx-text-secondary">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-nyx-overlay text-[10px] font-display font-semibold text-nyx-2 ring-1 ring-nyx-line">
               {user.name?.charAt(0)?.toUpperCase() ?? "?"}
             </div>
           )}
           {!collapsed && (
-            <span className="truncate text-sm text-nyx-text-secondary">
-              {user.name}
-            </span>
+            <span className="truncate text-xs text-nyx-3 font-body">{user.name}</span>
           )}
-        </div>
-      </div>
+        </Link>
 
-      {/* Collapse toggle */}
-      <button
-        onClick={onToggle}
-        className="hidden border-t border-nyx-border p-3 text-nyx-text-muted transition-colors hover:text-nyx-text-primary md:flex md:items-center md:justify-center"
-      >
-        {collapsed ? (
-          <ChevronsRight className="h-4 w-4" />
-        ) : (
-          <ChevronsLeft className="h-4 w-4" />
-        )}
-      </button>
+        {/* Collapse toggle — desktop only */}
+        <button
+          onClick={onToggle}
+          className={cn(
+            "hidden md:flex w-full items-center border-t border-nyx-line p-2.5",
+            "text-nyx-3 hover:text-nyx-2 hover:bg-nyx-raised transition-colors",
+            collapsed ? "justify-center" : "justify-end px-3",
+          )}
+        >
+          <ChevronRight className={cn(
+            "h-3.5 w-3.5 transition-transform duration-200",
+            !collapsed && "rotate-180",
+          )} />
+        </button>
+      </div>
     </nav>
   );
 }
 
-export function Sidebar({
-  collapsed,
-  onToggle,
-  mobileOpen,
-  onMobileClose,
-  user,
-}: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose, user }: SidebarProps) {
   return (
     <>
       {/* Desktop */}
@@ -166,7 +149,7 @@ export function Sidebar({
         {mobileOpen && (
           <>
             <motion.div
-              className="fixed inset-0 z-40 bg-black/50 md:hidden"
+              className="fixed inset-0 z-40 bg-black/60 md:hidden"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -177,7 +160,7 @@ export function Sidebar({
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
-              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             >
               <NavContent
                 collapsed={false}
