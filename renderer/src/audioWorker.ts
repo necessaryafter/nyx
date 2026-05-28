@@ -9,15 +9,16 @@ import { db, jobs } from "./database/index";
 import { eq } from "drizzle-orm";
 import { fetchUserIntegration, markFailed, markAudioReady } from "./database";
 import { decrypt, storageClient, BUCKET_ASSETS } from "@nyx/shared";
-import { TalkifyProvider } from "./tts/talkify";
-import { CustomAudioProvider } from "./tts/custom";
+import { TalkifyProvider } from "./tts/providers/talkify.provider";
+import { CustomAudioProvider } from "./tts/providers/custom.provider";
+import { EdgeTTSProvider } from "./tts/providers/edge.provider";
 import type { TTSConfig, WordTimestamp } from "./graph";
 import { calculateSceneSlots } from "./sceneSlots";
 
 export interface AudioJobData {
   jobId: string;
   narration:
-    | { type: "tts"; text: string; provider: "talkify"; voice?: string; speed?: number }
+    | { type: "tts"; text: string; provider: "talkify" | "edge"; voice?: string; speed?: number }
     | { type: "audio"; assetStorageKey: string }; // storageKey já resolvido
 }
 
@@ -31,10 +32,26 @@ async function synthesize(
   narration: AudioJobData["narration"],
   talkifyApiKey: string | undefined,
   workDir: string,
-): Promise<{ audioPath: string; timestamps: WordTimestamp[] }> {
+): Promise<{ audioPath: string; timestamps: WordTimestamp[]; sceneSlots?: ReturnType<typeof calculateSceneSlots> }> {
   const audioPath = join(workDir, "tts.wav");
 
   if (narration.type === "tts") {
+    if (narration.provider === "edge") {
+      const provider = new EdgeTTSProvider();
+      const config: TTSConfig = { provider: "edge", voice: narration.voice, speed: narration.speed };
+      const result = await provider.synthesize(narration.text, config);
+      await writeFile(audioPath, result.audio);
+      // Each SRT cue from edge-tts is already a sentence — use directly as slots.
+      const sceneSlots = result.wordTimestamps.map((t, i) => ({
+        index: i,
+        startMs: t.startMs,
+        endMs: t.endMs,
+        assetId: null as null,
+        narrationText: t.word,
+      }));
+      return { audioPath, timestamps: result.wordTimestamps, sceneSlots };
+    }
+
     if (!talkifyApiKey) {
       throw new Error("AudioWorker: Talkify API key não configurada para este usuário");
     }
@@ -87,15 +104,15 @@ export function startAudioWorker() {
         workDir = await mkdtemp(join(tmpdir(), `audio-${jobId}-`));
 
         // Sintetiza áudio
-        const { audioPath, timestamps } = await synthesize(narration, talkifyApiKey, workDir);
+        const { audioPath, timestamps, sceneSlots: prebuiltSlots } = await synthesize(narration, talkifyApiKey, workDir);
 
         // Faz upload para MinIO
         const audioKey = `audio-jobs/${jobId}/tts.wav`;
         await storageClient.putObject(BUCKET_ASSETS, audioKey, createReadStream(audioPath));
         logger.info({ jobId, audioKey }, "audio uploaded to MinIO");
 
-        // Calcula sceneSlots
-        const sceneSlots = calcSlots(timestamps);
+        // Calcula sceneSlots (edge-tts já entrega slots prontos por frase)
+        const sceneSlots = prebuiltSlots ?? calcSlots(timestamps);
         logger.info({ jobId, slots: sceneSlots.length }, "scene slots calculated");
 
         // Atualiza job no DB

@@ -59,6 +59,20 @@ export function useStartAudio(jobId: string) {
   });
 }
 
+export function useGenerateSlotImage(jobId: string) {
+  return useMutation({
+    mutationFn: ({ slotIndex, prompt }: { slotIndex: number; prompt: string }) =>
+      api.post<{ assetId: string }>(`/api/jobs/${jobId}/slots/${slotIndex}/generate-image`, { prompt }),
+  });
+}
+
+export function useGenerateSlotPrompts(jobId: string) {
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ prompts: string[] }>(`/api/jobs/${jobId}/slots/generate-prompts`, {}),
+  });
+}
+
 export function useUpdateSlots(jobId: string) {
   const qc = useQueryClient();
   return useMutation({

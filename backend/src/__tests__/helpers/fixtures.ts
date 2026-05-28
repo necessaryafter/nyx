@@ -8,23 +8,22 @@ const UUID_JOB_DONE = "c0000000-0000-4000-8000-000000000087";
 const UUID_CREDIT_TX = "d0000000-0000-4000-8000-000000000066";
 
 export const VALID_GRAPH: GraphInput = {
-  version: 1,
+  version: 2,
+  settings: { width: 1080, height: 1920, fps: 30, format: "mp4", musicVolume: 0.15 },
   nodes: [
-    { id: "vp1", type: "MediaPool", config: { assetIds: [UUID_ASSET], assetType: "video" } },
-    { id: "tts1", type: "TTS", config: { text: "Hello world", provider: "talkify" } },
-    { id: "vfit1", type: "VideoFit", config: { mode: "random-loop" } },
-    { id: "sub1", type: "Subtitle", config: { wordsPerGroup: 3 } },
-    { id: "layer1", type: "Layer", config: {} },
-    { id: "render1", type: "Render", config: { width: 1080, height: 1920, fps: 30 } },
+    { id: "narration", kind: "source", type: "NarrationSource", config: { mode: "tts", text: "Hello world", provider: "talkify" } },
+    { id: "assets", kind: "source", type: "AssetSource", config: { assetIds: [UUID_ASSET], assetType: "video" } },
+    { id: "on-sentence", kind: "event", type: "OnSentence", config: {} },
+    { id: "subtitle", kind: "action", type: "SetSubtitleStyle", config: { wordsPerGroup: 3 } },
+    { id: "media", kind: "action", type: "SetMedia", config: { target: "main" } },
+    { id: "render1", kind: "output", type: "Render", config: {} },
   ],
   edges: [
-    { id: "e1", from: "vp1", fromHandle: "items", to: "vfit1", toHandle: "items" },
-    { id: "e2", from: "tts1", fromHandle: "audio", to: "vfit1", toHandle: "audio" },
-    { id: "e3", from: "tts1", fromHandle: "timestamps", to: "sub1", toHandle: "timestamps" },
-    { id: "e4", from: "vfit1", fromHandle: "video", to: "layer1", toHandle: "base" },
-    { id: "e5", from: "sub1", fromHandle: "filter", to: "layer1", toHandle: "overlay" },
-    { id: "e6", from: "layer1", fromHandle: "video", to: "render1", toHandle: "video" },
-    { id: "e7", from: "tts1", fromHandle: "audio", to: "render1", toHandle: "audio" },
+    { id: "e1", from: "narration", to: "on-sentence", role: "narration" },
+    { id: "e2", from: "on-sentence", to: "subtitle", role: "trigger" },
+    { id: "e3", from: "assets", to: "media", role: "media" },
+    { id: "e4", from: "media", to: "render1" },
+    { id: "e5", from: "subtitle", to: "render1" },
   ],
 };
 

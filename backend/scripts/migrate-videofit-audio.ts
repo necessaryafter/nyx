@@ -1,4 +1,7 @@
 /**
+ * OBSOLETE: Graph V1 migration script.
+ * Graph V2 is a reset without V1 compatibility. Do not run this for V2 data.
+ *
  * Migration: adiciona edge VideoFit.audio → Render.audio em templates antigos.
  *
  * Para cada template:

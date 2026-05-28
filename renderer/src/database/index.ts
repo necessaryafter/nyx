@@ -4,6 +4,8 @@ import postgres from "postgres";
 import { jobs, assets, integrations } from "./schema";
 import type { Graph } from "../graph";
 
+export { jobs } from "./schema";
+
 const client = postgres(process.env.DATABASE_URL!);
 export const db = drizzle(client, { schema: { jobs, assets, integrations } });
 

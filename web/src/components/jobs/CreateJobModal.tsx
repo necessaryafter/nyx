@@ -3,6 +3,8 @@ import { motion } from "motion/react";
 import { X, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTemplates } from "../../hooks/useTemplates";
+import { api } from "../../lib/api";
+import type { Job } from "../../lib/types";
 
 interface Props {
   templateId?: string;
@@ -12,20 +14,21 @@ interface Props {
 export function CreateJobModal({ templateId: initialTemplateId, onClose }: Props) {
   const navigate = useNavigate();
 
-  // If a template ID is already known, navigate directly to the render page
+  // If a template ID is already known, create draft and go straight to narration step
   useEffect(() => {
-    if (initialTemplateId) {
-      onClose();
-      navigate(`/render/${initialTemplateId}`);
-    }
-  }, [initialTemplateId, navigate, onClose]);
+    if (!initialTemplateId) return;
+    api.post<Job>("/api/jobs/draft", { templateId: initialTemplateId })
+      .then((job) => { onClose(); navigate(`/jobs/${job.id}/edit`); })
+      .catch(console.error);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [search, setSearch] = useState("");
   const templates = useTemplates(0, search || undefined);
 
   const handleSelectTemplate = (id: string) => {
-    onClose();
-    navigate(`/render/${id}`);
+    api.post<Job>("/api/jobs/draft", { templateId: id })
+      .then((job) => { onClose(); navigate(`/jobs/${job.id}/edit`); })
+      .catch(console.error);
   };
 
   if (initialTemplateId) return null;

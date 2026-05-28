@@ -1,5 +1,5 @@
-import type { TTSConfig, WordTimestamp } from "../graph";
-import { BaseTTSProvider, type TTSResult } from "./provider";
+import type { TTSConfig, WordTimestamp } from "../../graph";
+import { BaseTTSProvider, type TTSResult } from "../base.provider";
 import { logger } from "@nyx/shared";
 
 const BASE_URL = "https://api.talkifylabs.com";

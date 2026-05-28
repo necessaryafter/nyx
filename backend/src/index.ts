@@ -11,6 +11,8 @@ import { creditRoutes } from "./routes/credits";
 import { integrationRoutes } from "./routes/integrations";
 import { apiKeyRoutes } from "./routes/api-keys";
 import { wsRoutes } from "./routes/ws";
+import { aiRoutes } from "./routes/ai";
+import { imageRoutes } from "./routes/images";
 
 const app = new Elysia()
   .onError(({ error, request }) => {
@@ -42,6 +44,8 @@ const app = new Elysia()
   .use(integrationRoutes)
   .use(apiKeyRoutes)
   .use(wsRoutes)
-  .listen(process.env.PORT ?? 3000);
+  .use(aiRoutes)
+  .use(imageRoutes)
+  .listen({ port: process.env.PORT ?? 3000, maxRequestBodySize: 4 * 1024 * 1024 * 1024 });
 
 logger.info(`API running at http://${app.server?.hostname}:${app.server?.port}`);

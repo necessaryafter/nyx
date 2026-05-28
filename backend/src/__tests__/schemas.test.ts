@@ -226,6 +226,10 @@ describe("uploadAssetSchema", () => {
   });
 
   it("rejects invalid type", () => {
-    expect(uploadAssetSchema.safeParse({ name: "file", type: "image" }).success).toBe(false);
+    expect(uploadAssetSchema.safeParse({ name: "file", type: "binary" }).success).toBe(false);
+  });
+
+  it("accepts image type", () => {
+    expect(uploadAssetSchema.safeParse({ name: "photo.png", type: "image" }).success).toBe(true);
   });
 });

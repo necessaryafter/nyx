@@ -328,29 +328,45 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
   );
 }
 
-function UploadProgress({
-  uploads,
-}: {
-  uploads: { file: string; done: boolean; error?: string }[];
-}) {
+type UploadEntry = { file: string; done: boolean; error?: string; progress: number };
+
+function UploadProgress({ uploads }: { uploads: UploadEntry[] }) {
   if (uploads.length === 0) return null;
   return (
     <div className="space-y-1">
       {uploads.map((u, i) => (
         <div
           key={i}
-          className="flex items-center gap-2 rounded-lg border border-nyx-border bg-nyx-surface px-3 py-2 text-xs"
+          className="rounded-lg border border-nyx-border bg-nyx-surface px-3 py-2 text-xs"
         >
-          {u.done ? (
-            <Check className="h-3.5 w-3.5 shrink-0 text-green-400" />
-          ) : u.error ? (
-            <X className="h-3.5 w-3.5 shrink-0 text-red-400" />
-          ) : (
-            <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-nyx-border border-t-nyx-cyan-500" />
-          )}
-          <span className="truncate text-nyx-text-secondary">{u.file}</span>
-          {u.error && (
-            <span className="ml-auto shrink-0 text-red-400">{u.error}</span>
+          <div className="flex items-center gap-2">
+            {u.done ? (
+              <Check className="h-3.5 w-3.5 shrink-0 text-green-400" />
+            ) : u.error ? (
+              <X className="h-3.5 w-3.5 shrink-0 text-red-400" />
+            ) : (
+              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-nyx-border border-t-nyx-cyan-500" />
+            )}
+            <span className="min-w-0 flex-1 truncate text-nyx-text-secondary">{u.file}</span>
+            {!u.done && !u.error && (
+              <span className="shrink-0 tabular-nums text-nyx-text-muted">
+                {u.progress === -1 ? "Processando..." : `${u.progress}%`}
+              </span>
+            )}
+            {u.error && (
+              <span className="ml-auto shrink-0 text-red-400">{u.error}</span>
+            )}
+          </div>
+          {!u.done && !u.error && (
+            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-nyx-border">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-all duration-150",
+                  u.progress === -1 ? "w-full animate-pulse bg-nyx-cyan-500/50" : "bg-nyx-cyan-500",
+                )}
+                style={u.progress !== -1 ? { width: `${u.progress}%` } : undefined}
+              />
+            </div>
           )}
         </div>
       ))}
@@ -370,11 +386,14 @@ export function AssetsPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [uploads, setUploads] = useState<
-    { file: string; done: boolean; error?: string }[]
-  >([]);
+  const [uploads, setUploads] = useState<UploadEntry[]>([]);
+  const currentUploadIdxRef = useRef<number>(-1);
 
-  const uploadAsset = useUploadAsset();
+  const uploadAsset = useUploadAsset((pct) => {
+    setUploads((prev) =>
+      prev.map((u, idx) => idx === currentUploadIdxRef.current ? { ...u, progress: pct } : u),
+    );
+  });
   const counts = useAssetCounts();
   const assets = useAssets(
     page,
@@ -397,10 +416,11 @@ export function AssetsPage() {
       const rejected = files.filter((f) => !isAllowedFile(f));
       const allowed = files.filter(isAllowedFile);
 
-      const rejectedEntries = rejected.map((f) => ({
+      const rejectedEntries: UploadEntry[] = rejected.map((f) => ({
         file: f.name,
         done: false,
         error: "Tipo de arquivo não suportado",
+        progress: 0,
       }));
 
       if (!allowed.length && rejected.length) {
@@ -411,15 +431,16 @@ export function AssetsPage() {
 
       const entries = [
         ...rejectedEntries,
-        ...allowed.map((f) => ({ file: f.name, done: false })),
+        ...allowed.map((f): UploadEntry => ({ file: f.name, done: false, progress: 0 })),
       ];
       setUploads((prev) => [...prev, ...entries]);
 
       const uploadOffset = uploads.length + rejectedEntries.length;
       for (let i = 0; i < allowed.length; i++) {
         const globalIdx = uploadOffset + i;
+        currentUploadIdxRef.current = globalIdx;
         try {
-          await uploadAsset.mutateAsync(allowed[i]);
+          await uploadAsset.mutateAsync(allowed[i]!);
           setUploads((prev) =>
             prev.map((u, idx) => (idx === globalIdx ? { ...u, done: true } : u)),
           );

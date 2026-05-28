@@ -4,14 +4,13 @@ import { createWriteStream } from "fs";
 import { mkdtemp, readFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import type { TTSConfig, WordTimestamp } from "../graph";
-import { BaseTTSProvider, type TTSResult } from "./provider";
+import type { TTSConfig, WordTimestamp } from "../../graph";
+import { BaseTTSProvider, type TTSResult } from "../base.provider";
 import { storageClient, BUCKET_ASSETS } from "@nyx/shared";
 import { logger } from "@nyx/shared";
 
 const WHISPERX_URL = process.env.WHISPERX_URL ?? "http://localhost:8010";
 
-// Áudio já pronto — chama o whisperx-service para transcrição/forced alignment
 export class CustomAudioProvider extends BaseTTSProvider {
   readonly name = "custom";
 

@@ -4,8 +4,6 @@ export type JobStatus =
   | "audio_ready"
   | "ready"
   | "rendering"
-  | "pending"
-  | "processing"
   | "done"
   | "failed";
 
@@ -18,6 +16,11 @@ export interface SceneSlot {
   startMs: number;
   endMs: number;
   assetId: string | null;
+  narrationText?: string;
+}
+
+export interface JobGraph {
+  nodes: Array<{ type: string; config?: Record<string, unknown> }>;
 }
 
 export interface Job {
@@ -25,6 +28,7 @@ export interface Job {
   status: JobStatus;
   templateId: string;
   templateName?: string | null;
+  graph?: JobGraph | null;
   audioKey: string | null;
   sceneSlots: SceneSlot[] | null;
   videoKey: string | null;
@@ -46,7 +50,7 @@ export interface Template {
 export interface Asset {
   id: string;
   name: string;
-  type: "video" | "audio" | "text";
+  type: "video" | "audio" | "text" | "image";
   sizeBytes: number | null;
   createdAt: string;
 }
@@ -62,55 +66,84 @@ export interface CreditsBalance {
   balance: number;
 }
 
-/* ── Graph types (mirrored from renderer/src/graph.ts) ── */
+export interface RenderSettings {
+  width: number;
+  height: number;
+  fps: number;
+  format?: "mp4" | "webm";
+  musicVolume?: number;
+}
+
+export type NodeKind = "source" | "event" | "action" | "output";
 
 export type NodeType =
-  | "MediaPool"
-  | "SceneSlot"
-  | "VideoFit"
-  | "TTS"
-  | "Subtitle"
-  | "Layer"
-  | "Render"
-  | "Overlay"
-  | "Transition"
-  | "Zoom"
-  | "Shake"
-  | "SceneMedia";
-
-export interface SceneMediaConfig {
-  fit?: "cover" | "contain";
-  transitionMs?: number;
-}
+  | "NarrationSource"
+  | "AssetSource"
+  | "SceneSource"
+  | "MusicSource"
+  | "OnTime"
+  | "OnWord"
+  | "OnSentence"
+  | "OnSilence"
+  | "OnSceneStart"
+  | "OnSceneEnd"
+  | "SetMedia"
+  | "ShowOverlay"
+  | "SetSubtitleStyle"
+  | "PlaySfx"
+  | "SetMusic"
+  | "CameraEffect"
+  | "Render";
 
 export interface GraphEdge {
   id: string;
   from: string;
-  fromHandle: string;
   to: string;
-  toHandle: string;
-  order?: number;
+  role?: "media" | "sfx" | "music" | "overlay" | "narration" | "scene" | "trigger";
 }
 
-export interface MediaPoolConfig {
-  assetIds: string[];
-  assetType: "video" | "audio" | "image";
-}
-export interface SceneSlotConfig {
-  label: string;
-  assetType: "video" | "audio" | "image";
-  assetIds: string[];
-}
-export interface VideoFitConfig {
-  mode: "random-loop" | "sequential" | "once";
-}
-export interface TTSConfig {
+export interface NarrationSourceConfig {
+  mode?: "job-input" | "tts" | "audio" | "precomputed";
   text?: string;
-  provider: "talkify" | "custom";
+  provider?: "talkify" | "custom" | "precomputed";
   voice?: string;
   speed?: number;
-  providerConfig?: Record<string, unknown>; // pass-through for advanced provider params (e.g. Talkify effects)
+  audioKey?: string;
+  providerConfig?: Record<string, unknown>;
 }
+
+export interface AssetSourceConfig {
+  assetIds: string[];
+  assetType: "video" | "audio" | "image";
+}
+
+export interface SceneSourceConfig {
+  strategy?: "job-slots" | "paragraphs" | "silence" | "even";
+  fit?: "cover" | "contain";
+  transitionMs?: number;
+}
+
+export interface MusicSourceConfig {
+  assetIds: string[];
+  volume?: number;
+  mode?: "random-loop" | "sequential";
+}
+
+export interface OnTimeConfig {
+  atMs: number;
+  durationMs?: number;
+}
+
+export interface OnWordConfig {
+  word?: string;
+  match?: "exact" | "contains";
+  caseSensitive?: boolean;
+}
+
+export interface OnSilenceConfig {
+  minDurationMs?: number;
+}
+
 export interface SubtitleStyle {
   fontFamily?: string;
   fontSize?: number;
@@ -120,26 +153,35 @@ export interface SubtitleStyle {
   strokeWidth?: number;
   position?: "top" | "center" | "bottom";
 }
-export interface SubtitleConfig {
-  wordsPerGroup: number;
-  startSeconds?: number;
-  endSeconds?: number;
-  style?: SubtitleStyle;
+
+export interface SetMediaConfig {
+  target?: string;
+  fit?: "cover" | "contain";
+  transitionMs?: number;
 }
-export interface LayerConfig {}
-export interface OverlayConfig {
-  assetId: string;
-  soundAssetId?: string;
-  startSeconds: number;
-  durationSeconds: number;
-  position: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
+
+export interface ShowOverlayConfig {
+  assetId?: string;
+  startOffsetMs?: number;
+  durationMs?: number;
+  position?: { x: number; y: number; width: number; height: number };
   opacity?: number;
   blendMode?: "normal" | "screen";
+}
+
+export interface SetSubtitleStyleConfig {
+  wordsPerGroup?: number;
+  style?: SubtitleStyle;
+}
+
+export interface PlaySfxConfig {
+  assetId?: string;
+  startOffsetMs?: number;
+  volume?: number;
+}
+
+export interface SetMusicConfig {
+  volume?: number;
 }
 
 export type TransitionType =
@@ -158,50 +200,34 @@ export type TransitionType =
   | "diagtl" | "diagtr" | "diagbl" | "diagbr"
   | "zoomin";
 
-export interface TransitionConfig {
-  types: TransitionType[];
-  mode: "random" | "sequential";
-  duration: number;
-}
-
-export interface ZoomConfig {
-  factor: number;
-  direction: "in" | "out" | "random";
-}
-
-export interface ShakeConfig {
-  intensity: number;
-}
-
-export type EffectConfig =
-  | ({ type: "transition" } & TransitionConfig)
-  | ({ type: "zoom" } & ZoomConfig)
-  | ({ type: "shake" } & ShakeConfig);
-
-export interface RenderConfig {
-  width: number;
-  height: number;
-  fps: number;
-  format?: "mp4" | "webm";
-  musicVolume?: number;
+export interface CameraEffectConfig {
+  zoom?: { factor?: number; direction?: "in" | "out" | "random" };
+  shake?: { intensity?: number };
+  transition?: { types?: TransitionType[]; mode?: "random" | "sequential"; duration?: number };
 }
 
 export type GraphNode =
-  | { id: string; type: "MediaPool"; config: MediaPoolConfig }
-  | { id: string; type: "SceneSlot"; config: SceneSlotConfig }
-  | { id: string; type: "VideoFit"; config: VideoFitConfig }
-  | { id: string; type: "TTS"; config: TTSConfig }
-  | { id: string; type: "Subtitle"; config: SubtitleConfig }
-  | { id: string; type: "Layer"; config: LayerConfig }
-  | { id: string; type: "Render"; config: RenderConfig }
-  | { id: string; type: "Overlay"; config: OverlayConfig }
-  | { id: string; type: "Transition"; config: TransitionConfig }
-  | { id: string; type: "Zoom"; config: ZoomConfig }
-  | { id: string; type: "Shake"; config: ShakeConfig }
-  | { id: string; type: "SceneMedia"; config: SceneMediaConfig };
+  | { id: string; kind: "source"; type: "NarrationSource"; config: NarrationSourceConfig }
+  | { id: string; kind: "source"; type: "AssetSource"; config: AssetSourceConfig }
+  | { id: string; kind: "source"; type: "SceneSource"; config: SceneSourceConfig }
+  | { id: string; kind: "source"; type: "MusicSource"; config: MusicSourceConfig }
+  | { id: string; kind: "event"; type: "OnTime"; config: OnTimeConfig }
+  | { id: string; kind: "event"; type: "OnWord"; config: OnWordConfig }
+  | { id: string; kind: "event"; type: "OnSentence"; config: Record<string, never> }
+  | { id: string; kind: "event"; type: "OnSilence"; config: OnSilenceConfig }
+  | { id: string; kind: "event"; type: "OnSceneStart"; config: Record<string, never> }
+  | { id: string; kind: "event"; type: "OnSceneEnd"; config: Record<string, never> }
+  | { id: string; kind: "action"; type: "SetMedia"; config: SetMediaConfig }
+  | { id: string; kind: "action"; type: "ShowOverlay"; config: ShowOverlayConfig }
+  | { id: string; kind: "action"; type: "SetSubtitleStyle"; config: SetSubtitleStyleConfig }
+  | { id: string; kind: "action"; type: "PlaySfx"; config: PlaySfxConfig }
+  | { id: string; kind: "action"; type: "SetMusic"; config: SetMusicConfig }
+  | { id: string; kind: "action"; type: "CameraEffect"; config: CameraEffectConfig }
+  | { id: string; kind: "output"; type: "Render"; config: Record<string, never> };
 
 export interface Graph {
-  version: 1;
+  version: 2;
+  settings: RenderSettings;
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
@@ -209,3 +235,4 @@ export interface Graph {
 export interface TemplateWithGraph extends Template {
   graph: Graph;
 }
+

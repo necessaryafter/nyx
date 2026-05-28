@@ -3,13 +3,9 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
-import type { TTSConfig, WordTimestamp } from "../graph";
-import { BaseTTSProvider, type TTSResult } from "./provider";
+import type { TTSConfig, WordTimestamp } from "../../graph";
+import { BaseTTSProvider, type TTSResult } from "../base.provider";
 
-/**
- * MockTTSProvider — generates synthetic audio via FFmpeg for testing.
- * No external API or WhisperX needed.
- */
 export class MockTTSProvider extends BaseTTSProvider {
   readonly name = "mock";
 

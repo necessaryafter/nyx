@@ -6,7 +6,25 @@
       "WebFetch(domain:raphaelai.org)",
       "WebFetch(domain:altankorayy.github.io)",
       "WebFetch(domain:api.raphaelai.org)",
-      "WebFetch(domain:medium.com)"
+      "WebFetch(domain:medium.com)",
+      "Bash(psql \"postgresql://studio:studio@localhost:5432/studio\" -c \"SELECT id, name, email FROM \\\\\"user\\\\\" LIMIT 10;\")",
+      "PowerShell(Get-Command psql -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command bun -ErrorAction SilentlyContinue)",
+      "PowerShell(cd \"C:\\\\Users\\\\Bruno\\\\IdeaProjects\\\\nyx\\\\backend\"; $env:DATABASE_URL=\"postgresql://studio:studio@localhost:5432/studio\"; bun scripts/add-credits.ts 1000)",
+      "Bash(wmic cpu *)",
+      "Bash(wmic memorychip *)",
+      "Bash(wmic path *)",
+      "PowerShell(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors; Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum | Select-Object @{N='TotalRAM_GB';E={[math]::Round\\($_.Sum/1GB,1\\)}}; Get-CimInstance Win32_VideoController | Select-Object Name, @{N='VRAM_GB';E={[math]::Round\\($_.AdapterRAM/1GB,1\\)}})",
+      "WebFetch(domain:www.text-to-speech.online)",
+      "WebFetch(domain:)",
+      "Skill(impeccable)",
+      "Skill(impeccable:*)",
+      "Bash(node \"C:\\\\Users\\\\Bruno\\\\.claude\\\\skills\\\\impeccable\\\\scripts\\\\load-context.mjs\")",
+      "Bash(dir c:\\\\Users\\\\Bruno\\\\IdeaProjects\\\\nyx)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Bruno\\\\IdeaProjects\\\\nyx\\\\renderer\\\\src\" -Recurse -Force | Select-Object FullName, @{Name='Type';Expression={if\\($_.PSIsContainer\\){'DIR'}else{'FILE'}}} | Sort-Object FullName)",
+      "Bash(Remove-Item src/image/provider.ts, src/image/pollinations.ts, src/image/freegen.ts, src/image/mock.ts, src/tts/provider.ts, src/tts/talkify.ts, src/tts/custom.ts, src/tts/edge.ts, src/tts/mock.ts -Force)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(bun x *)"
     ]
   }
 }
