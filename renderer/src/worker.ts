@@ -6,76 +6,61 @@ import { createReadStream } from "fs";
 import { logger } from "@nyx/shared";
 import { Sentry } from "./lib/sentry";
 import { fetchJob, markDone, markFailed, resolveAssetKeys, fetchUserIntegration } from "./database";
-import type { ResolvedSceneSlot } from "./nodes/executor";
-import { executeGraph } from "./resolver";
 import { decrypt, storageClient, BUCKET_VIDEOS } from "@nyx/shared";
 import { probeDuration } from "./ffmpeg/probe";
-import type { Graph, GraphNode } from "./graph";
+import type { Graph } from "./graph";
+import { prepareAudio } from "./prepare/audio";
+import { downloadSceneAssets } from "./prepare/scenes";
+import { downloadAssets } from "./prepare/assets";
+import { compilePlan } from "./compile/index";
+import { buildVideo } from "./ffmpeg/builder";
 
 interface RenderJobData {
   jobId: string;
 }
 
-/**
- * Coleta todos os assetIds presentes no grafo (MediaPool, SceneSlot, Overlay).
- */
 function collectAssetIds(graph: Graph): string[] {
   const ids = new Set<string>();
   for (const node of graph.nodes) {
-    if (node.type === "MediaPool" || node.type === "SceneSlot") {
+    if (node.type === "AssetSource" || node.type === "MusicSource") {
       for (const id of node.config.assetIds) ids.add(id);
-    } else if (node.type === "Overlay") {
+    } else if (node.type === "ShowOverlay" && node.config.assetId) {
       ids.add(node.config.assetId);
-      if (node.config.soundAssetId) ids.add(node.config.soundAssetId);
-    } else if (node.type === "TTS" && node.config.provider === "custom" && node.config.voice) {
-      // "precomputed" usa storageKey direto — não precisa de resolução
+    } else if (node.type === "PlaySfx" && node.config.assetId) {
+      ids.add(node.config.assetId);
+    } else if (node.type === "NarrationSource" && node.config.provider === "custom" && node.config.voice) {
       ids.add(node.config.voice);
     }
   }
   return [...ids];
 }
 
-/**
- * Substitui assetIds pelos storageKeys correspondentes no grafo.
- * Lança erro se algum asset não for encontrado.
- */
-function patchGraphWithStorageKeys(graph: Graph, keyMap: Map<string, string>): Graph {
-  const patchedNodes: GraphNode[] = graph.nodes.map((node) => {
-    if (node.type === "MediaPool") {
-      const patchedIds = node.config.assetIds.map((id) => {
-        const key = keyMap.get(id);
-        if (!key) throw new Error(`asset ${id} not found in database`);
-        return key;
-      });
-      return { ...node, config: { ...node.config, assetIds: patchedIds } };
+function patchStorageKeys(graph: Graph, keyMap: Map<string, string>): Graph {
+  const nodes = graph.nodes.map((node) => {
+    if (node.type === "AssetSource") {
+      return { ...node, config: { ...node.config, assetIds: node.config.assetIds.map((id) => resolve(id, keyMap)) } };
     }
-    if (node.type === "SceneSlot") {
-      const patchedIds = node.config.assetIds.map((id) => {
-        const key = keyMap.get(id);
-        if (!key) throw new Error(`asset ${id} not found in database`);
-        return key;
-      });
-      return { ...node, config: { ...node.config, assetIds: patchedIds } };
+    if (node.type === "MusicSource") {
+      return { ...node, config: { ...node.config, assetIds: node.config.assetIds.map((id) => resolve(id, keyMap)) } };
     }
-    if (node.type === "TTS" && node.config.provider === "precomputed") {
-      // voice já é storageKey — não precisa resolver
-      return node;
+    if (node.type === "NarrationSource" && node.config.provider === "custom" && node.config.voice) {
+      return { ...node, config: { ...node.config, voice: resolve(node.config.voice, keyMap) } };
     }
-    if (node.type === "TTS" && node.config.provider === "custom" && node.config.voice) {
-      const key = keyMap.get(node.config.voice);
-      if (!key) throw new Error(`asset ${node.config.voice} not found in database`);
-      return { ...node, config: { ...node.config, voice: key } };
+    if (node.type === "ShowOverlay" && node.config.assetId) {
+      return { ...node, config: { ...node.config, assetId: resolve(node.config.assetId, keyMap) } };
     }
-    if (node.type === "Overlay") {
-      const assetKey = keyMap.get(node.config.assetId);
-      if (!assetKey) throw new Error(`asset ${node.config.assetId} not found in database`);
-      const soundKey = node.config.soundAssetId ? keyMap.get(node.config.soundAssetId) : undefined;
-      if (node.config.soundAssetId && !soundKey) throw new Error(`asset ${node.config.soundAssetId} not found in database`);
-      return { ...node, config: { ...node.config, assetId: assetKey, ...(soundKey ? { soundAssetId: soundKey } : {}) } };
+    if (node.type === "PlaySfx" && node.config.assetId) {
+      return { ...node, config: { ...node.config, assetId: resolve(node.config.assetId, keyMap) } };
     }
     return node;
   });
-  return { ...graph, nodes: patchedNodes };
+  return { ...graph, nodes };
+}
+
+function resolve(id: string, keyMap: Map<string, string>): string {
+  const key = keyMap.get(id);
+  if (!key) throw new Error(`asset ${id} not found in database`);
+  return key;
 }
 
 export function startWorker() {
@@ -83,90 +68,89 @@ export function startWorker() {
     "render",
     async (job: Job<RenderJobData>) => {
       const { jobId } = job.data;
-      logger.info({ jobId }, "job received");
+      logger.info({ jobId }, "render job received");
 
       let workDir: string | undefined;
 
       try {
-        // 1. Busca job no DB
         const dbJob = await fetchJob(jobId);
         const graph = dbJob.graph as Graph;
 
-        // 2. Resolve asset UUIDs → MinIO storageKeys
+        if (graph.version !== 2) throw new Error(`unsupported graph version ${String(graph.version)}`);
+
+        // Resolve asset UUIDs → MinIO storage keys
         const assetIds = collectAssetIds(graph);
         const keyMap = await resolveAssetKeys(assetIds);
         logger.info({ jobId, assetCount: assetIds.length }, "asset keys resolved");
-        const resolvedGraph = patchGraphWithStorageKeys(graph, keyMap);
+        const resolvedGraph = patchStorageKeys(graph, keyMap);
 
-        // 3. Cria diretório de trabalho temporário
         workDir = await mkdtemp(join(tmpdir(), `render-${jobId}-`));
         logger.info({ jobId, workDir }, "work directory created");
 
-        // 4. Resolve API key do provider TTS do usuário
         const talkifyIntegration = await fetchUserIntegration(dbJob.userId, "talkify");
         const talkifyApiKey = talkifyIntegration ? decrypt(talkifyIntegration.encryptedApiKey) : undefined;
 
-        // 5. Resolve sceneSlots (staged flow) → storageKeys para o SceneMedia node
-        let resolvedSceneSlots: ResolvedSceneSlot[] | undefined;
+        // Resolve scene slot asset IDs → storage keys
+        let rawSlots: Array<{ index: number; startMs: number; endMs: number; assetId: string | null }> = [];
         if (dbJob.sceneSlots) {
-          const rawSlots = dbJob.sceneSlots as Array<{ index: number; startMs: number; endMs: number; assetId: string | null }>;
+          rawSlots = dbJob.sceneSlots as typeof rawSlots;
           const slotAssetIds = rawSlots.map((s) => s.assetId).filter(Boolean) as string[];
           const slotKeyMap = await resolveAssetKeys(slotAssetIds);
-          resolvedSceneSlots = rawSlots.map((slot) => ({
-            index: slot.index,
-            startMs: slot.startMs,
-            endMs: slot.endMs,
-            assetId: slot.assetId ? (slotKeyMap.get(slot.assetId) ?? slot.assetId) : "",
+          rawSlots = rawSlots.map((slot) => ({
+            ...slot,
+            assetId: slot.assetId ? (slotKeyMap.get(slot.assetId) ?? slot.assetId) : null,
           }));
-          logger.info({ jobId, slots: resolvedSceneSlots.length }, "scene slots resolved");
+        }
+        const filledSlots = rawSlots.filter((s) => s.assetId !== null) as Array<{ index: number; startMs: number; endMs: number; assetId: string }>;
+
+        // ── prepare ──────────────────────────────────────────────────────
+        const narrationNode = resolvedGraph.nodes.find((n) => n.type === "NarrationSource");
+        if (!narrationNode || narrationNode.type !== "NarrationSource") {
+          throw new Error("graph has no NarrationSource node");
         }
 
-        // 6. Executa o grafo completo
-        const renderNodeConfig = resolvedGraph.nodes.find((n) => n.type === "Render")?.config as { width: number; height: number } | undefined;
-        const results = await executeGraph(resolvedGraph, workDir, {
-          talkifyApiKey,
-          renderWidth: renderNodeConfig?.width,
-          renderHeight: renderNodeConfig?.height,
-          sceneSlots: resolvedSceneSlots,
-        });
+        const { audioPath, timestamps } = await prepareAudio(narrationNode.config, workDir, talkifyApiKey);
+        logger.info({ jobId, timestamps: timestamps.length }, "audio ready");
 
-        // 7. Encontra o output do node Render (file)
-        const renderNode = resolvedGraph.nodes.find((n) => n.type === "Render");
-        if (!renderNode) throw new Error("graph has no Render node");
+        const sceneSourceNode = resolvedGraph.nodes.find((n) => n.type === "SceneSource");
+        const sceneFit = sceneSourceNode?.type === "SceneSource" ? (sceneSourceNode.config.fit ?? "cover") : "cover";
 
-        const renderOutput = results.get(renderNode.id);
-        if (!renderOutput?.file) throw new Error("Render node produced no file output");
+        const sceneAssets = filledSlots.length > 0
+          ? await downloadSceneAssets(filledSlots, workDir, sceneFit)
+          : [];
+        logger.info({ jobId, scenes: sceneAssets.length }, "scene assets ready");
 
-        const finalFile = renderOutput.file as string;
+        // Download pool/overlay/sfx/music assets
+        const assetMap = await downloadAssets(assetIds.map((id) => keyMap.get(id) ?? id), workDir);
+        logger.info({ jobId, assets: assetMap.size }, "pool assets downloaded");
 
-        // 7. Calcula duração do vídeo final
+        // ── compile ───────────────────────────────────────────────────────
+        const plan = compilePlan({ graph: resolvedGraph, audioPath, timestamps, assetMap, sceneAssets });
+        logger.info({ jobId }, "render plan compiled");
+
+        // ── build ─────────────────────────────────────────────────────────
+        const outputFile = await buildVideo(plan, workDir);
+        logger.info({ jobId, outputFile }, "video built");
+
         let durationSeconds: number | undefined;
         try {
-          durationSeconds = Math.round(await probeDuration(finalFile));
+          durationSeconds = Math.round(await probeDuration(outputFile));
         } catch {
           logger.warn({ jobId }, "could not determine video duration");
         }
 
-        // 8. Upload para MinIO
         const videoKey = `${jobId}/output.mp4`;
-        await storageClient.putObject(BUCKET_VIDEOS, videoKey, createReadStream(finalFile));
-        logger.info({ jobId, videoKey }, "video uploaded to MinIO");
+        await storageClient.putObject(BUCKET_VIDEOS, videoKey, createReadStream(outputFile));
+        logger.info({ jobId, videoKey }, "video uploaded");
 
-        // 9. Atualiza job no DB
         await markDone(jobId, videoKey, durationSeconds);
-        logger.info({ jobId, durationSeconds }, "job marked as done");
+        logger.info({ jobId, durationSeconds }, "job done");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        logger.error({ jobId, err: message }, "job processing failed");
-
-        Sentry.captureException(err, {
-          tags: { render_step: "worker" },
-          contexts: { job: { jobId } },
-        });
-
+        logger.error({ jobId, err: message }, "render job failed");
+        Sentry.captureException(err, { tags: { render_step: "worker" }, contexts: { job: { jobId } } });
         throw err;
       } finally {
-        // Limpa o diretório temporário
         if (workDir) {
           await rm(workDir, { recursive: true, force: true }).catch((e) =>
             logger.warn({ workDir, err: e }, "failed to cleanup work directory"),
@@ -174,10 +158,7 @@ export function startWorker() {
         }
       }
     },
-    {
-      connection: { url: process.env.REDIS_URL! },
-      concurrency: 1,
-    },
+    { connection: { url: process.env.REDIS_URL! }, concurrency: 1 },
   );
 
   worker.on("failed", (job, err) => {
@@ -185,18 +166,13 @@ export function startWorker() {
     logger.error({ jobId, err: err.message }, "job failed");
     if (jobId) {
       markFailed(jobId, err.message).catch((dbErr) => {
-        logger.error({ jobId, dbErr }, "failed to update job status in DB");
-        Sentry.captureException(dbErr, {
-          tags: { render_step: "mark_failed" },
-          contexts: { job: { jobId } },
-        });
+        logger.error({ jobId, dbErr }, "failed to mark job as failed");
+        Sentry.captureException(dbErr, { tags: { render_step: "mark_failed" }, contexts: { job: { jobId } } });
       });
     }
   });
 
-  worker.on("completed", (job) => {
-    logger.info({ jobId: job.data.jobId }, "job completed");
-  });
+  worker.on("completed", (job) => logger.info({ jobId: job.data.jobId }, "job completed"));
 
   return worker;
 }

@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { randomUUID } from "crypto";
+import { Readable } from "stream";
 import { eq, and, count, desc, like, ilike } from "drizzle-orm";
 import { rateLimit } from "elysia-rate-limit";
 import { requireAuth } from "../auth/session";
@@ -36,9 +37,9 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
     const userId = session.user.id;
     const assetId = randomUUID();
     const storageKey = `${userId}/${assetId}/${name}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const stream = Readable.from(file.stream() as AsyncIterable<Uint8Array>);
 
-    await minio.putObject(BUCKET_ASSETS, storageKey, buffer, buffer.length);
+    await minio.putObject(BUCKET_ASSETS, storageKey, stream, file.size);
 
     const [row] = await database
       .insert(assets)
@@ -48,7 +49,7 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
         name,
         type,
         storageKey,
-        sizeBytes: buffer.length,
+        sizeBytes: file.size,
       })
       .returning();
 

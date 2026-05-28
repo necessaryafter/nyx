@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Plus, Search } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "../components/ui/Button";
@@ -21,7 +20,6 @@ const fade = (delay: number) => ({
 });
 
 export function TemplatesPage() {
-  const navigate = useNavigate();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");

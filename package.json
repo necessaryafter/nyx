@@ -1,10 +1,20 @@
 {
+  "name": "nyx",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "renderer",
+    "shared",
+    "thanatos",
+    "web"
+  ],
   "scripts": {
     "infra": "podman compose up -d",
     "dev": "powershell -ExecutionPolicy Bypass -File dev.ps1"
   },
   "dependencies": {},
   "devDependencies": {
+    "@sinclair/typebox": "^0.34.49",
     "pino-pretty": "^13.1.3"
   }
 }

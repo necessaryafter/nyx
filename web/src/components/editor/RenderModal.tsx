@@ -6,7 +6,6 @@ import { Button } from "../ui/Button";
 import { useEditorStore } from "../../stores/editorStore";
 import { useCreditsBalance } from "../../hooks/useCredits";
 import { api } from "../../lib/api";
-import { flowToGraph } from "../../stores/editorStore";
 import { cn } from "../../lib/cn";
 
 export function RenderModal() {
@@ -20,6 +19,7 @@ export function RenderModal() {
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<"tts" | "audio">("tts");
+  const [ttsProvider, setTtsProvider] = useState<"talkify" | "edge">("talkify");
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -31,27 +31,20 @@ export function RenderModal() {
   const balanceAfter = currentBalance - totalCredits;
   const canAfford = currentBalance >= totalCredits;
 
-  const { graphNodes, graphEdges } = flowToGraph(nodes, edges);
-
   const handleRender = async () => {
     if (!templateId || !canAfford) return;
     setError("");
     setSubmitting(true);
 
     try {
+      const draft = await api.post<{ id: string }>("/api/jobs/draft", { templateId });
       const narration =
         mode === "tts"
-          ? { type: "tts" as const, text }
+          ? { type: "tts" as const, text, provider: ttsProvider }
           : { type: "audio" as const, assetId: "" };
-
-      await api.post("/api/jobs", {
-        templateId,
-        narration,
-        graph: { version: 1, nodes: graphNodes, edges: graphEdges },
-      });
-
+      await api.post(`/api/jobs/${draft.id}/audio`, { narration });
       close();
-      navigate("/jobs");
+      navigate(`/jobs/${draft.id}/edit`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar job");
     } finally {
@@ -134,6 +127,24 @@ export function RenderModal() {
                   <div className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-nyx-border bg-nyx-void py-4 text-sm text-nyx-text-muted hover:border-nyx-hover">
                     <Upload className="h-4 w-4" />
                     Escolher arquivo de áudio...
+                  </div>
+                )}
+                {mode === "tts" && (
+                  <div className="mt-2 flex gap-1 rounded-lg border border-nyx-border bg-nyx-void p-0.5">
+                    {(["talkify", "edge"] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setTtsProvider(p)}
+                        className={cn(
+                          "flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                          ttsProvider === p
+                            ? "bg-nyx-elevated text-nyx-text-primary"
+                            : "text-nyx-text-muted hover:text-nyx-text-secondary",
+                        )}
+                      >
+                        {p === "talkify" ? "Talkify" : "Edge TTS (gratuito)"}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>

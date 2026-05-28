@@ -34,26 +34,26 @@ export function Step4_Confirm({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Confirmar e renderizar</h2>
-        <p className="text-sm text-white/50 mt-1">
+        <h2 className="text-lg font-semibold text-nyx-text-primary">Confirmar e renderizar</h2>
+        <p className="text-sm text-nyx-text-secondary mt-1">
           Revise os detalhes antes de renderizar.
         </p>
       </div>
 
-      <div className="rounded-xl border border-white/10 bg-white/5 divide-y divide-white/10">
+      <div className="rounded-xl border border-nyx-border bg-nyx-surface divide-y divide-nyx-border">
         <div className="flex items-center gap-3 px-4 py-3">
-          <Layers className="w-4 h-4 text-white/40 shrink-0" />
+          <Layers className="w-4 h-4 text-nyx-text-muted shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-white/40">Cenas</p>
-            <p className="text-sm font-medium">{slots.length} cena{slots.length !== 1 ? "s" : ""}</p>
+            <p className="text-xs text-nyx-text-muted">Cenas</p>
+            <p className="text-sm font-medium text-nyx-text-primary">{slots.length} cena{slots.length !== 1 ? "s" : ""}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3 px-4 py-3">
-          <Film className="w-4 h-4 text-white/40 shrink-0" />
+          <Film className="w-4 h-4 text-nyx-text-muted shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-white/40">Duração estimada</p>
-            <p className="text-sm font-medium">
+            <p className="text-xs text-nyx-text-muted">Duração estimada</p>
+            <p className="text-sm font-medium text-nyx-text-primary">
               {slots.length > 0
                 ? `${estimatedDurationSec}s (${formatMs(totalDurationMs)})`
                 : "—"}
@@ -62,18 +62,18 @@ export function Step4_Confirm({
         </div>
 
         <div className="flex items-center gap-3 px-4 py-3">
-          <Coins className="w-4 h-4 text-white/40 shrink-0" />
+          <Coins className="w-4 h-4 text-nyx-text-muted shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-xs text-white/40">Créditos de renderização</p>
-            <p className="text-sm font-medium">{renderCredits} créditos</p>
+            <p className="text-xs text-nyx-text-muted">Créditos de renderização</p>
+            <p className="text-sm font-medium text-nyx-text-primary">{renderCredits} créditos</p>
           </div>
         </div>
       </div>
 
       {renderJob.isError && (
         <div className="flex items-center gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/20 rounded-lg">
-          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-          <p className="text-sm text-red-300">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+          <p className="text-sm text-red-500">
             {(renderJob.error as { body?: { error?: string } })?.body?.error === "insufficient credits"
               ? "Créditos insuficientes para renderizar."
               : "Erro ao iniciar renderização. Tente novamente."}
@@ -85,7 +85,7 @@ export function Step4_Confirm({
         <Button
           disabled={renderJob.isPending}
           onClick={handleRender}
-          className="bg-nyx-cyan-500 hover:bg-nyx-cyan-400 text-nyx-900"
+          className="bg-nyx-cyan-500 hover:bg-nyx-cyan-400 text-white"
         >
           {renderJob.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin mr-2" />

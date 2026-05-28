@@ -13,44 +13,26 @@ import {
   createDraftJobSchema,
   startAudioSchema,
   updateSlotsSchema,
-  createJobSchema,
   graphSchema,
   validateGraphStructure,
   paginationSchema,
-  narrationSchema,
   type GraphInput,
   type SceneSlot,
 } from "../lib/schemas";
 import { RENDER_CREDITS_PER_MIN, TTS_CREDITS_PER_MIN } from "../lib/credits";
-import { z } from "zod";
 
 interface AudioJobData {
   jobId: string;
   narration:
-    | { type: "tts"; text: string; provider: "talkify"; voice?: string; speed?: number }
+    | { type: "tts"; text: string; provider: "talkify" | "edge"; voice?: string; speed?: number }
     | { type: "audio"; assetStorageKey: string };
-}
-
-type Narration = z.infer<typeof narrationSchema>;
-
-function injectNarration(graph: GraphInput, narration: Narration): GraphInput {
-  const nodes = graph.nodes.map((node) => {
-    if (node.type !== "TTS") return node;
-
-    if (narration.type === "tts") {
-      return { ...node, config: { ...node.config, text: narration.text } };
-    }
-    return { ...node, config: { ...node.config, provider: "custom" as const, voice: narration.assetId } };
-  });
-
-  return { ...graph, nodes };
 }
 
 /** Injeta o audioKey pré-computado no TTS node como provider=precomputed */
 function injectPrecomputedAudio(graph: GraphInput, audioKey: string): GraphInput {
   const nodes = graph.nodes.map((node) => {
-    if (node.type !== "TTS") return node;
-    return { ...node, config: { ...node.config, provider: "precomputed" as const, voice: audioKey } };
+    if (node.type !== "NarrationSource") return node;
+    return { ...node, config: { ...node.config, mode: "precomputed" as const, provider: "precomputed" as const, audioKey } };
   });
   return { ...graph, nodes };
 }
@@ -255,7 +237,11 @@ export const jobRoutes = new Elysia({ prefix: "/api/jobs" })
       return { error: "job not found" };
     }
 
-    if (job.status !== "ready") {
+    const jobGraph = job.graph as GraphInput | null;
+    const hasSceneSource = jobGraph?.nodes?.some((n) => n.type === "SceneSource") ?? false;
+    const renderableStatuses = hasSceneSource ? ["ready"] : ["ready", "audio_ready"];
+
+    if (!renderableStatuses.includes(job.status)) {
       set.status = 409;
       return { error: "job must be in ready status", current: job.status };
     }
@@ -362,118 +348,6 @@ export const jobRoutes = new Elysia({ prefix: "/api/jobs" })
 
     set.status = 204;
     return;
-  })
-
-  // ── Legado: cria job e enfileira diretamente (quick render) ──
-  .post("/", async ({ body, session, set }) => {
-    const parsed = createJobSchema.safeParse(body);
-    if (!parsed.success) {
-      set.status = 400;
-      return { error: "invalid fields", details: parsed.error.flatten() };
-    }
-
-    const userId = session.user.id;
-
-    const [template] = await database
-      .select()
-      .from(templates)
-      .where(and(eq(templates.id, parsed.data.templateId), eq(templates.userId, userId)))
-      .limit(1);
-
-    if (!template) {
-      set.status = 404;
-      return { error: "template not found" };
-    }
-
-    const graphParsed = graphSchema.safeParse(template.graph);
-    if (!graphParsed.success) {
-      set.status = 400;
-      return { error: "invalid graph in template", details: graphParsed.error.flatten() };
-    }
-
-    const { narration, sceneOverrides, mediaPoolOverrides } = parsed.data;
-    let jobGraph = injectNarration(graphParsed.data, narration);
-
-    if (sceneOverrides && sceneOverrides.length > 0) {
-      jobGraph = {
-        ...jobGraph,
-        nodes: jobGraph.nodes.map((node) => {
-          if (node.type !== "SceneSlot") return node;
-          const override = sceneOverrides.find((o) => o.nodeId === node.id);
-          if (!override) return node;
-          return { ...node, config: { ...node.config, assetIds: [override.assetId] } };
-        }),
-      };
-    }
-
-    if (mediaPoolOverrides && mediaPoolOverrides.length > 0) {
-      jobGraph = {
-        ...jobGraph,
-        nodes: jobGraph.nodes.map((node) => {
-          if (node.type !== "MediaPool") return node;
-          const override = mediaPoolOverrides.find((o) => o.nodeId === node.id);
-          if (!override) return node;
-          return { ...node, config: { ...node.config, assetIds: override.assetIds } };
-        }),
-      };
-    }
-
-    const structErrors = validateGraphStructure(jobGraph);
-    if (structErrors.length > 0) {
-      set.status = 400;
-      return { error: "invalid graph structure", details: structErrors };
-    }
-
-    const ttsExternalCount = jobGraph.nodes.filter(
-      (n) => n.type === "TTS" && n.config.provider !== "custom",
-    ).length;
-    const estimatedCredits = RENDER_CREDITS_PER_MIN * 1 + TTS_CREDITS_PER_MIN * ttsExternalCount;
-
-    let job;
-    try {
-      job = await database.transaction(async (tx) => {
-        const [balanceResult] = await tx
-          .select({ total: sum(creditTransactions.amount) })
-          .from(creditTransactions)
-          .where(eq(creditTransactions.userId, userId));
-
-        const balance = Number(balanceResult?.total ?? 0);
-        if (balance < estimatedCredits) {
-          throw { status: 402, balance };
-        }
-
-        const [newJob] = await tx
-          .insert(jobs)
-          .values({
-            userId,
-            templateId: template.id,
-            graph: jobGraph,
-            creditsCharged: estimatedCredits,
-          })
-          .returning();
-
-        await tx.insert(creditTransactions).values({
-          userId,
-          amount: -estimatedCredits,
-          reason: "render" as const,
-          jobId: newJob!.id,
-        });
-
-        return newJob!;
-      });
-    } catch (err: unknown) {
-      if (err && typeof err === "object" && "status" in err && (err as Record<string, unknown>).status === 402) {
-        set.status = 402;
-        const balance = (err as Record<string, unknown>).balance as number;
-        return { error: "insufficient credits", required: estimatedCredits, balance };
-      }
-      throw err;
-    }
-
-    await renderQueue.add("render", { jobId: job.id });
-
-    set.status = 201;
-    return job;
   })
 
   // ── GET /api/jobs — Lista jobs do usuário ──

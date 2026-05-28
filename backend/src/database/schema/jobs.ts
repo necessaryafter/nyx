@@ -4,15 +4,11 @@ import { templates } from "./templates";
 import { creditTransactions } from "./credits";
 
 export const jobStatusEnum = pgEnum("job_status", [
-  // Staged flow
   "draft",            // template selecionado, aguardando narração
   "audio_processing", // TTS/WhisperX rodando
   "audio_ready",      // áudio pronto, aguardando mídias dos slots
   "ready",            // todos os slots preenchidos, pronto para renderizar
   "rendering",        // enfileirado e em execução
-  // Legacy / render direto
-  "pending",
-  "processing",
   "done",
   "failed",
 ]);
@@ -21,7 +17,7 @@ export const jobs = pgTable("jobs", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id").notNull(),
   templateId: uuid("template_id").notNull().references(() => templates.id, { onDelete: "restrict" }),
-  status: jobStatusEnum("status").notNull().default("pending"),
+  status: jobStatusEnum("status").notNull().default("draft"),
   graph: jsonb("graph").notNull(),
   audioKey: text("audio_key"),        // MinIO storageKey do áudio gerado na etapa 2
   sceneSlots: jsonb("scene_slots"),   // SceneSlot[] — preenchido após áudio pronto

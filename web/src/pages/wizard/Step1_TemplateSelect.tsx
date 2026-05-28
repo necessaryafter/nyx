@@ -22,16 +22,16 @@ function TemplateCard({
         "w-full text-left rounded-xl border p-4 transition-all",
         selected
           ? "border-nyx-cyan-500 bg-nyx-cyan-500/10"
-          : "border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8",
+          : "border-nyx-border bg-nyx-surface hover:border-nyx-hover hover:bg-nyx-elevated",
       )}
     >
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-          <LayoutTemplate className="w-5 h-5 text-white/60" />
+        <div className="w-10 h-10 rounded-lg bg-nyx-elevated flex items-center justify-center shrink-0">
+          <LayoutTemplate className="w-5 h-5 text-nyx-text-muted" />
         </div>
         <div className="min-w-0">
-          <p className="font-medium text-sm truncate">{template.name}</p>
-          <p className="text-xs text-white/40 mt-0.5">
+          <p className="font-medium text-sm truncate text-nyx-text-primary">{template.name}</p>
+          <p className="text-xs text-nyx-text-muted mt-0.5">
             Criado em {new Date(template.createdAt).toLocaleDateString("pt-BR")}
           </p>
         </div>
@@ -56,29 +56,29 @@ export function Step1_TemplateSelect({ onCreated }: { onCreated: (job: Job) => v
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold">Selecione um template</h2>
-        <p className="text-sm text-white/50 mt-1">
+        <h2 className="text-lg font-semibold text-nyx-text-primary">Selecione um template</h2>
+        <p className="text-sm text-nyx-text-secondary mt-1">
           O template define a estrutura visual do vídeo.
         </p>
       </div>
 
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-nyx-text-muted" />
         <input
           type="text"
           placeholder="Buscar template..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-nyx-cyan-500/50"
+          className="w-full bg-nyx-surface border border-nyx-border rounded-lg pl-9 pr-4 py-2.5 text-sm text-nyx-text-primary placeholder:text-nyx-text-muted focus:outline-none focus:border-nyx-cyan-500"
         />
       </div>
 
       {isLoading ? (
         <div className="flex justify-center py-8">
-          <Loader2 className="w-5 h-5 animate-spin text-white/40" />
+          <Loader2 className="w-5 h-5 animate-spin text-nyx-text-muted" />
         </div>
       ) : data?.data.length === 0 ? (
-        <p className="text-center text-white/40 py-8">Nenhum template encontrado</p>
+        <p className="text-center text-nyx-text-muted py-8">Nenhum template encontrado</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {data?.data.map((t) => (

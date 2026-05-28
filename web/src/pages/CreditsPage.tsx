@@ -2,7 +2,6 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import {
   Coins,
-  Plus,
   Clapperboard,
   Mic,
   ShoppingCart,
