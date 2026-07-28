@@ -46,6 +46,6 @@ const app = new Elysia()
   .use(wsRoutes)
   .use(aiRoutes)
   .use(imageRoutes)
-  .listen({ port: process.env.PORT ?? 3000, maxRequestBodySize: 4 * 1024 * 1024 * 1024 });
+  .listen({ port: process.env.PORT ?? 3000, maxRequestBodySize: 4 * 1024 * 1024 * 1024, idleTimeout: 255 });
 
 logger.info(`API running at http://${app.server?.hostname}:${app.server?.port}`);

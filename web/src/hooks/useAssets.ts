@@ -63,13 +63,15 @@ export function useRenameAsset() {
   });
 }
 
-function uploadAsset(file: File, onProgress?: (pct: number) => void): Promise<Asset> {
-  return new Promise((resolve, reject) => {
-    let type: "video" | "audio" | "text" | "image" = "text";
-    if (file.type.startsWith("video/")) type = "video";
-    else if (file.type.startsWith("audio/")) type = "audio";
-    else if (file.type.startsWith("image/")) type = "image";
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5 MB
+const CHUNKED_THRESHOLD = 20 * 1024 * 1024; // use chunked for files >= 20 MB
 
+// In dev the Vite proxy can't handle large binary bodies — go direct to the backend.
+// CORS on the backend already allows localhost:5173 with credentials.
+const UPLOAD_ORIGIN = import.meta.env.DEV ? "http://localhost:3000" : "";
+
+function uploadAssetSingle(file: File, type: string, onProgress?: (pct: number) => void): Promise<Asset> {
+  return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("name", file.name);
@@ -101,6 +103,86 @@ function uploadAsset(file: File, onProgress?: (pct: number) => void): Promise<As
     xhr.onerror = () => reject(new Error("Erro de rede ao enviar arquivo"));
     xhr.send(formData);
   });
+}
+
+const MAX_CHUNK_RETRIES = 3;
+
+async function uploadChunkWithRetry(
+  url: string,
+  chunk: Blob,
+  chunkIndex: number,
+): Promise<void> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)));
+    }
+    try {
+      const res = await fetch(url, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: chunk,
+      });
+      if (res.ok) return;
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      lastError = new Error(err.error ?? `Falha no chunk ${chunkIndex} (HTTP ${res.status})`);
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  throw lastError;
+}
+
+async function uploadAssetChunked(file: File, type: string, onProgress?: (pct: number) => void): Promise<Asset> {
+  const startRes = await fetch(`${UPLOAD_ORIGIN}/api/assets/upload/multipart/start`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: file.name, type }),
+  });
+  if (!startRes.ok) {
+    const err = await startRes.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Falha ao iniciar upload");
+  }
+  const { assetId } = await startRes.json() as { assetId: string };
+
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+  for (let i = 0; i < totalChunks; i++) {
+    const chunk = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+    await uploadChunkWithRetry(
+      `${UPLOAD_ORIGIN}/api/assets/upload/multipart/${assetId}/chunk?index=${i}&total=${totalChunks}`,
+      chunk,
+      i,
+    );
+    onProgress?.(Math.round(((i + 1) / totalChunks) * 99));
+  }
+
+  const completeRes = await fetch(`${UPLOAD_ORIGIN}/api/assets/upload/multipart/${assetId}/complete`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ totalChunks, totalSize: file.size }),
+  });
+  if (!completeRes.ok) {
+    const err = await completeRes.json().catch(() => ({})) as { error?: string };
+    throw new Error(err.error ?? "Falha ao finalizar upload");
+  }
+  onProgress?.(-1);
+  return completeRes.json() as Promise<Asset>;
+}
+
+function uploadAsset(file: File, onProgress?: (pct: number) => void): Promise<Asset> {
+  let type: "video" | "audio" | "text" | "image" = "text";
+  if (file.type.startsWith("video/")) type = "video";
+  else if (file.type.startsWith("audio/")) type = "audio";
+  else if (file.type.startsWith("image/")) type = "image";
+
+  if (file.size >= CHUNKED_THRESHOLD) {
+    return uploadAssetChunked(file, type, onProgress);
+  }
+  return uploadAssetSingle(file, type, onProgress);
 }
 
 export function useUploadAsset(onProgress?: (pct: number) => void) {
