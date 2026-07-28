@@ -16,11 +16,13 @@ export async function prepareOverlayClips(
       const durationSec = overlay.endSeconds - overlay.startSeconds;
       const isImage = /\.(png|jpe?g|webp|gif)$/i.test(extname(overlay.localPath));
 
+      const coverScale = `scale=${overlay.width}:${overlay.height}:force_original_aspect_ratio=increase,crop=${overlay.width}:${overlay.height}`;
+
       if (isImage) {
         await run([
           "-y", "-loop", "1", "-i", overlay.localPath,
           "-t", String(durationSec),
-          "-vf", `scale=${overlay.width}:${overlay.height}`,
+          "-vf", coverScale,
           "-pix_fmt", "yuva420p", "-c:v", "libx264", "-preset", "ultrafast",
           clipPath,
         ]);
@@ -28,7 +30,7 @@ export async function prepareOverlayClips(
         await run([
           "-y", "-i", overlay.localPath,
           "-t", String(durationSec),
-          "-vf", `scale=${overlay.width}:${overlay.height}`,
+          "-vf", coverScale,
           "-pix_fmt", "yuva420p", "-c:v", "libx264", "-preset", "ultrafast", "-an",
           clipPath,
         ]);

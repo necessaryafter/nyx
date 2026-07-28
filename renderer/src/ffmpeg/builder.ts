@@ -18,18 +18,19 @@ export async function buildVideo(plan: RenderPlan, workDir: string): Promise<str
   const { width, height, fps, format = "mp4" } = settings;
 
   logger.info({ width, height, fps }, "builder: starting render");
+  const t0 = Date.now();
 
   const baseVideo = plan.scenes.length > 0
     ? await buildSceneTrack(plan, workDir)
     : await buildPoolTrack(plan, workDir);
-
-  logger.info({ baseVideo }, "builder: base track ready");
+    
+  logger.info({ ms: Date.now() - t0 }, "builder: base track ready");
 
   const composited = await composite(baseVideo, plan, workDir, width, height, fps);
-  logger.info({ composited }, "builder: compositing done");
+  logger.info({ ms: Date.now() - t0 }, "builder: compositing done");
 
   const mixedAudio = await mixAudio(plan, workDir);
-  logger.info({ mixedAudio }, "builder: audio mixed");
+  logger.info({ ms: Date.now() - t0 }, "builder: audio mixed");
 
   const outFile = join(workDir, `output.${format}`);
   await run([
@@ -38,7 +39,7 @@ export async function buildVideo(plan: RenderPlan, workDir: string): Promise<str
     "-i", mixedAudio,
     "-map", "0:v:0",
     "-map", "1:a:0",
-    "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
     "-c:a", "aac",
     "-pix_fmt", "yuv420p",
     "-movflags", "+faststart",
@@ -46,7 +47,7 @@ export async function buildVideo(plan: RenderPlan, workDir: string): Promise<str
     outFile,
   ]);
 
-  logger.info({ outFile }, "builder: final output ready");
+  logger.info({ ms: Date.now() - t0 }, "builder: final encode done");
   return outFile;
 }
 
@@ -61,19 +62,22 @@ async function buildSceneTrack(plan: RenderPlan, workDir: string): Promise<strin
       const effectFilter = zoomShakeFilter(zoom, shake);
       const videoFilter = [scaleFilter, effectFilter].filter(Boolean).join(",");
 
+      const startSec = scene.startMs / 1000;
+
       if (isImage(scene.localPath)) {
         await run([
           "-y", "-loop", "1", "-i", scene.localPath,
           "-vf", videoFilter || scaleFilter,
           "-t", String(durationSec),
-          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-an",
+          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-an",
           clipPath,
         ]);
       } else {
-        const args = ["-y", "-i", scene.localPath, "-t", String(durationSec), "-an"];
+        // -ss before -i = fast input seek (keyframe-accurate, no slow decode)
+        const args = ["-y", "-ss", String(startSec), "-i", scene.localPath, "-t", String(durationSec), "-an"];
         if (videoFilter) args.push("-vf", videoFilter);
 
-        args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", clipPath);
+        args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", clipPath);
         await run(args);
       }
 
@@ -102,7 +106,12 @@ async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string
   const targetDuration = await probeDuration(audioPath);
   const resolvedPool = await Promise.all(
     mediaPool.map(async (fileName: string, index: number) => {
-      if (!isImage(fileName)) return fileName;
+      if (!isImage(fileName)) {
+        // Trim video to audio length before any further processing (stream copy = instant)
+        const trimPath = join(workDir, `pool-vid-${index}.mp4`);
+        await run(["-y", "-i", fileName, "-t", String(targetDuration), "-c:v", "copy", "-an", trimPath]);
+        return trimPath;
+      }
       const clipPath = join(workDir, `pool-img-${index}.mp4`);
       const clipDur = targetDuration / mediaPool.filter((p: string) => isImage(p)).length;
       const frames = Math.ceil(clipDur * 30);
@@ -111,7 +120,7 @@ async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string
         "-y", "-loop", "1", "-i", fileName,
         "-vf", `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='min(zoom+0.0003,1.05)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${width}x${height}:fps=30`,
         "-t", String(clipDur),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "fast", "-an",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-an",
         clipPath,
       ]);
 
@@ -120,6 +129,7 @@ async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string
   );
 
   const durations = await Promise.all(resolvedPool.map((p) => probeDuration(p)));
+
   const playlist: string[] = [];
   let total = 0;
   if (poolMode === "random-loop") {
@@ -140,18 +150,21 @@ async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string
     }
   }
 
-  // Apply zoom/shake per clip if needed
+  // Apply zoom/shake per unique clip, capped at targetDuration — no point encoding
+  // beyond what the final output uses (e.g. a 50-min source for a 5-min audio).
   let processedPlaylist = playlist;
   if (zoom || shake) {
     const vf = zoomShakeFilter(zoom, shake);
-    processedPlaylist = await Promise.all(
-      playlist.map(async (clip, i) => {
+    const uniqueClips = [...new Set(playlist)];
+    const processedMap = new Map<string, string>();
+    await Promise.all(
+      uniqueClips.map(async (clip, i) => {
         const out = join(workDir, `pool-clip-${i}.mp4`);
-
         await run(["-y", "-i", clip, "-vf", vf, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-an", out]);
-        return out;
+        processedMap.set(clip, out);
       }),
     );
+    processedPlaylist = playlist.map((clip) => processedMap.get(clip)!);
   }
 
   const outFile = join(workDir, "base-pool.mp4");
@@ -224,7 +237,7 @@ async function mixAudio(plan: RenderPlan, workDir: string): Promise<string> {
   let audioPath = plan.audioPath;
 
   if (plan.music.paths.length > 0) {
-    audioPath = await mixMusic(audioPath, plan.music.paths, plan.music.volume, workDir);
+    audioPath = await mixMusic(audioPath, plan.music, workDir);
   }
 
   if (plan.sfx.length > 0) {
@@ -234,18 +247,27 @@ async function mixAudio(plan: RenderPlan, workDir: string): Promise<string> {
   return audioPath;
 }
 
-async function mixMusic(narrationPath: string, musicPaths: string[], volume: number, workDir: string): Promise<string> {
+async function mixMusic(narrationPath: string, music: import("../compile/music").MusicConfig, workDir: string): Promise<string> {
+  const { paths: musicPaths, volume, mode, fadeInMs, fadeOutMs } = music;
   const narrationDuration = await probeDuration(narrationPath);
   const durations = await Promise.all(musicPaths.map((p) => probeDuration(p)));
 
   const playlist: string[] = [];
-  
   let total = 0;
-  while (total < narrationDuration) {
-    const index = Math.floor(Math.random() * musicPaths.length);
-
-    playlist.push(musicPaths[index]!);
-    total += durations[index]!;
+  if (mode === "sequential") {
+    let i = 0;
+    while (total < narrationDuration) {
+      const idx = i % musicPaths.length;
+      playlist.push(musicPaths[idx]!);
+      total += durations[idx]!;
+      i++;
+    }
+  } else {
+    while (total < narrationDuration) {
+      const idx = Math.floor(Math.random() * musicPaths.length);
+      playlist.push(musicPaths[idx]!);
+      total += durations[idx]!;
+    }
   }
 
   const concatFile = join(workDir, "music-concat.txt");
@@ -258,10 +280,14 @@ async function mixMusic(narrationPath: string, musicPaths: string[], volume: num
     "-c:a", "pcm_s16le", concatOut,
   ]);
 
+  const fadeParts: string[] = [`volume=${volume}`];
+  if (fadeInMs > 0) fadeParts.push(`afade=t=in:st=0:d=${fadeInMs / 1000}`);
+  if (fadeOutMs > 0) fadeParts.push(`afade=t=out:st=${Math.max(0, narrationDuration - fadeOutMs / 1000)}:d=${fadeOutMs / 1000}`);
+
   const mixedOut = join(workDir, "audio-music.wav");
   await run([
     "-y", "-i", narrationPath, "-i", concatOut,
-    "-filter_complex", `[1:a]volume=${volume}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[out]`,
+    "-filter_complex", `[1:a]${fadeParts.join(",")}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[out]`,
     "-map", "[out]", "-c:a", "pcm_s16le", mixedOut,
   ]);
 

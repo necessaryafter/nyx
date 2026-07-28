@@ -1,5 +1,5 @@
 import { Worker, type Job } from "bullmq";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdtemp, rm, stat } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { createReadStream } from "fs";
@@ -121,8 +121,9 @@ export function startWorker() {
         logger.info({ jobId, scenes: sceneAssets.length }, "scene assets ready");
 
         // Download pool/overlay/sfx/music assets
+        const tDownload = Date.now();
         const assetMap = await downloadAssets(assetIds.map((id) => keyMap.get(id) ?? id), workDir);
-        logger.info({ jobId, assets: assetMap.size }, "pool assets downloaded");
+        logger.info({ jobId, assets: assetMap.size, ms: Date.now() - tDownload }, "pool assets downloaded");
 
         // ── compile ───────────────────────────────────────────────────────
         const plan = compilePlan({ graph: resolvedGraph, audioPath, timestamps, assetMap, sceneAssets });
@@ -140,8 +141,9 @@ export function startWorker() {
         }
 
         const videoKey = `${jobId}/output.mp4`;
-        await storageClient.putObject(BUCKET_VIDEOS, videoKey, createReadStream(outputFile));
-        logger.info({ jobId, videoKey }, "video uploaded");
+        const { size: videoSize } = await stat(outputFile);
+        await storageClient.putObject(BUCKET_VIDEOS, videoKey, createReadStream(outputFile), videoSize);
+        logger.info({ jobId, videoKey, videoSize }, "video uploaded");
 
         await markDone(jobId, videoKey, durationSeconds);
         logger.info({ jobId, durationSeconds }, "job done");
@@ -158,7 +160,7 @@ export function startWorker() {
         }
       }
     },
-    { connection: { url: process.env.REDIS_URL! }, concurrency: 1 },
+    { connection: { url: process.env.REDIS_URL! }, concurrency: 1, lockDuration: 300_000 },
   );
 
   worker.on("failed", (job, err) => {
