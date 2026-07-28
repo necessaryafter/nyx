@@ -302,6 +302,60 @@ export const jobRoutes = new Elysia({ prefix: "/api/jobs" })
     return { status: "rendering", creditsCharged };
   })
 
+  // ── Reexecuta um job que falhou ──
+  .post("/:id/retry", async ({ params, session, set }) => {
+    const userId = session.user.id;
+
+    const [job] = await database
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.id, params.id), eq(jobs.userId, userId)))
+      .limit(1);
+
+    if (!job) {
+      set.status = 404;
+      return { error: "job not found" };
+    }
+
+    if (job.status !== "failed") {
+      set.status = 409;
+      return { error: "only failed jobs can be retried", current: job.status };
+    }
+
+    // Falhou durante a renderização — áudio já estava pronto, basta re-enfileirar
+    if (job.audioKey) {
+      await database
+        .update(jobs)
+        .set({ status: "rendering", error: null })
+        .where(eq(jobs.id, job.id));
+      await renderQueue.add("render", { jobId: job.id });
+      return { status: "rendering" };
+    }
+
+    // Falhou durante o processamento de áudio — volta para draft e reembolsa TTS se cobrado
+    const [ttsTx] = await database
+      .select({ amount: creditTransactions.amount })
+      .from(creditTransactions)
+      .where(and(eq(creditTransactions.jobId, job.id), eq(creditTransactions.reason, "tts")))
+      .limit(1);
+
+    if (ttsTx) {
+      await database.insert(creditTransactions).values({
+        userId,
+        amount: Math.abs(ttsTx.amount),
+        reason: "refund",
+        jobId: job.id,
+      });
+    }
+
+    await database
+      .update(jobs)
+      .set({ status: "draft", error: null })
+      .where(eq(jobs.id, job.id));
+
+    return { status: "draft" };
+  })
+
   // ── T-12: Descarta job em andamento ──
   .delete("/:id", async ({ params, session, set }) => {
     const userId = session.user.id;

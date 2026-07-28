@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { Download, RotateCcw, Film } from "lucide-react";
+import { Download, RotateCcw, Film, Trash2 } from "lucide-react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import type { PaginatedResponse, Job, JobStatus } from "../../lib/types";
 import { api } from "../../lib/api";
+import { useDeleteJob, useRetryJob } from "../../hooks/useJobs";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { cn } from "../../lib/cn";
@@ -90,7 +91,7 @@ async function handleDownload(jobId: string) {
 
 /* ── Job Row ─────────────────────────────────── */
 
-function JobRow({ job }: { job: Job }) {
+function JobRow({ job, onDelete, onRetry }: { job: Job; onDelete: (id: string) => void; onRetry: (id: string) => void }) {
   const status = STATUS_CONFIG[job.status];
 
   return (
@@ -136,9 +137,27 @@ function JobRow({ job }: { job: Job }) {
           </Button>
         )}
         {job.status === "failed" && (
-          <Button variant="ghost" size="sm">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); onRetry(job.id); }}
+          >
             <RotateCcw className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Retry</span>
+          </Button>
+        )}
+        {job.status === "draft" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(job.id);
+            }}
+            className="text-nyx-text-muted hover:text-red-400"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Apagar</span>
           </Button>
         )}
       </div>
@@ -189,6 +208,9 @@ interface RecentJobsProps {
 }
 
 export function RecentJobs({ jobs }: RecentJobsProps) {
+  const deleteJob = useDeleteJob();
+  const retryJob = useRetryJob();
+
   return (
     <div className="rounded-xl border border-nyx-border bg-nyx-surface">
       {/* Header */}
@@ -218,7 +240,7 @@ export function RecentJobs({ jobs }: RecentJobsProps) {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.25, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] }}
             >
-              <JobRow job={job} />
+              <JobRow job={job} onDelete={deleteJob.mutate} onRetry={retryJob.mutate} />
             </motion.div>
           ))
         )}

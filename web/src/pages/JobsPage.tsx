@@ -16,12 +16,14 @@ import {
   ExternalLink,
   Play,
   ArrowRight,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
 import { CreateJobModal } from "../components/jobs/CreateJobModal";
 import { cn } from "../lib/cn";
-import { useJobs, useJobDownload, useJobsWebSocket } from "../hooks/useJobs";
+import { useJobs, useJobDownload, useJobsWebSocket, useDeleteJob, useRetryJob } from "../hooks/useJobs";
 import type { Job, JobStatus } from "../lib/types";
 
 const IN_PROGRESS_STATUSES = new Set(["draft", "audio_processing", "audio_ready", "ready"]);
@@ -87,6 +89,7 @@ function JobDrawer({
   onClose: () => void;
 }) {
   const getDownload = useJobDownload();
+  const retryJob = useRetryJob();
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -175,6 +178,21 @@ function JobDrawer({
                 </div>
               </section>
 
+              {/* Continue editing */}
+              {IN_PROGRESS_STATUSES.has(job.status) && (
+                <>
+                  <div className="h-px bg-nyx-border" />
+                  <section>
+                    <Link to={`/jobs/${job.id}/edit`}>
+                      <Button variant="primary" size="md" className="w-full">
+                        <ArrowRight className="h-4 w-4" />
+                        Continuar editando
+                      </Button>
+                    </Link>
+                  </section>
+                </>
+              )}
+
               {/* Video info */}
               {job.durationSeconds && (
                 <>
@@ -206,29 +224,38 @@ function JobDrawer({
                 </>
               )}
 
-              {/* Error */}
-              {job.status === "failed" && job.error && (
+              {/* Error + retry */}
+              {job.status === "failed" && (
                 <>
                   <div className="h-px bg-nyx-border" />
-                  <section>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-red-400">
-                      Erro
-                    </p>
-                    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
-                      <p className="font-mono text-xs text-red-300">{job.error}</p>
-                    </div>
+                  <section className="space-y-3">
+                    {job.error && (
+                      <>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-red-400">
+                          Erro
+                        </p>
+                        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                          <p className="font-mono text-xs text-red-300">{job.error}</p>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={copyError}>
+                          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                          {copied ? "Copiado!" : "Copiar erro"}
+                        </Button>
+                      </>
+                    )}
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2"
-                      onClick={copyError}
+                      variant="primary"
+                      size="md"
+                      className="w-full"
+                      disabled={retryJob.isPending}
+                      onClick={() => { retryJob.mutate(job.id); onClose(); }}
                     >
-                      {copied ? (
-                        <Check className="h-3.5 w-3.5" />
+                      {retryJob.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <Copy className="h-3.5 w-3.5" />
+                        <RotateCcw className="h-4 w-4" />
                       )}
-                      {copied ? "Copiado!" : "Copiar erro"}
+                      Tentar novamente
                     </Button>
                   </section>
                 </>
@@ -242,7 +269,7 @@ function JobDrawer({
 }
 
 // Mobile card layout
-function JobCard({ job, onDetail }: { job: Job; onDetail: () => void }) {
+function JobCard({ job, onDetail, onDelete }: { job: Job; onDetail: () => void; onDelete: (id: string) => void }) {
   const getDownload = useJobDownload();
   const [downloading, setDownloading] = useState(false);
 
@@ -305,6 +332,15 @@ function JobCard({ job, onDetail }: { job: Job; onDetail: () => void }) {
               )}
             </button>
           )}
+          {job.status === "draft" && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(job.id); }}
+              className="rounded p-1.5 text-nyx-text-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
+              title="Apagar rascunho"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
           <button className="rounded p-1.5 text-nyx-text-muted transition-colors hover:bg-nyx-hover">
             <MoreVertical className="h-4 w-4" />
           </button>
@@ -316,8 +352,8 @@ function JobCard({ job, onDetail }: { job: Job; onDetail: () => void }) {
 
 const STATUS_FILTERS: { label: string; value: JobStatus | "all" }[] = [
   { label: "Todos", value: "all" },
-  { label: "Pendente", value: "pending" },
-  { label: "Processando", value: "processing" },
+  { label: "Rascunho", value: "draft" },
+  { label: "Renderizando", value: "rendering" },
   { label: "Concluído", value: "done" },
   { label: "Falhou", value: "failed" },
 ];
@@ -335,6 +371,8 @@ export function JobsPage() {
     statusFilter === "all" ? undefined : statusFilter,
   );
   const getDownload = useJobDownload();
+  const deleteJob = useDeleteJob();
+  const retryJob = useRetryJob();
 
   const total = jobs.data?.total ?? 0;
   const limit = 20;
@@ -499,6 +537,34 @@ export function JobsPage() {
                               <Download className="h-4 w-4" />
                             </button>
                           )}
+                          {IN_PROGRESS_STATUSES.has(job.status) && (
+                            <Link
+                              to={`/jobs/${job.id}/edit`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="rounded p-1.5 text-nyx-cyan-400 transition-colors hover:bg-nyx-cyan-500/10"
+                              title="Continuar editando"
+                            >
+                              <ArrowRight className="h-4 w-4" />
+                            </Link>
+                          )}
+                          {job.status === "failed" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); retryJob.mutate(job.id); }}
+                              className="rounded p-1.5 text-nyx-text-muted transition-colors hover:bg-nyx-cyan-500/10 hover:text-nyx-cyan-400"
+                              title="Tentar novamente"
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </button>
+                          )}
+                          {job.status === "draft" && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteJob.mutate(job.id); }}
+                              className="rounded p-1.5 text-nyx-text-muted transition-colors hover:bg-red-500/10 hover:text-red-400"
+                              title="Apagar rascunho"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -525,7 +591,7 @@ export function JobsPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.04 }}
                 >
-                  <JobCard job={job} onDetail={() => setSelectedJob(job)} />
+                  <JobCard job={job} onDetail={() => setSelectedJob(job)} onDelete={deleteJob.mutate} />
                 </motion.div>
               ))}
             </div>

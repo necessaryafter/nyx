@@ -99,6 +99,15 @@ export function useDeleteJob() {
   });
 }
 
+export function useRetryJob() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) =>
+      api.post<{ status: string }>(`/api/jobs/${jobId}/retry`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
+  });
+}
+
 // ── WebSocket ──
 
 export type WsMessage =
