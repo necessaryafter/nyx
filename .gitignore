@@ -79,6 +79,10 @@ renders/
 # TypeScript
 *.tsbuildinfo
 
+# Local template exports
+*.nyx.json
+
 # Misc
 .cache/
 .parcel-cache/
+*.lnk
