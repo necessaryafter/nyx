@@ -40,6 +40,8 @@ const musicSourceConfigSchema = z.object({
   assetIds: z.array(z.string().uuid()),
   volume: z.number().min(0).max(1).optional(),
   mode: z.enum(["random-loop", "sequential"]).default("random-loop"),
+  fadeInMs: z.number().nonnegative().max(10_000).optional(),
+  fadeOutMs: z.number().nonnegative().max(10_000).optional(),
 });
 
 const onTimeConfigSchema = z.object({

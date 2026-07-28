@@ -51,7 +51,7 @@ export function compilePlan({ graph, audioPath, timestamps, assetMap, sceneAsset
     pool: extractMediaPool(graph, sceneAssets, assetMap),
     camera: extractCamera(graph),
     overlays: extractOverlays(actions, assetMap),
-    subtitles: extractSubtitles(actions),
+    subtitles: extractSubtitles(graph, actions),
     music: extractMusic(graph, assetMap),
     sfx: extractSfx(actions, assetMap),
   };

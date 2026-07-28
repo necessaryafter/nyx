@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Check, ChevronDown, MousePointer2, Search, Trash2 } from "lucide-react";
+import { Check, ChevronDown, MousePointer2, Play, Search, Square, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "../../stores/editorStore";
 import { useAssets } from "../../hooks/useAssets";
@@ -362,6 +362,40 @@ function SceneSourceProps({ nodeId, config }: { nodeId: string; config: SceneSou
 
 function MusicSourceProps({ nodeId, config }: { nodeId: string; config: MusicSourceConfig }) {
   const update = useEditorStore((s) => s.updateNodeConfig);
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const volume = config.volume ?? 0.15;
+
+  const stopAudio = () => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setPlaying(false);
+  };
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
+
+  useEffect(() => stopAudio, []);
+
+  const togglePreview = async () => {
+    if (playing) { stopAudio(); return; }
+    const ids = config.assetIds ?? [];
+    if (ids.length === 0) return;
+    const id = ids[Math.floor(Math.random() * ids.length)];
+    const res = await fetch(`/api/assets/${id}/url`, { credentials: "include" });
+    if (!res.ok) return;
+    const { url } = await res.json() as { url: string };
+    const audio = new Audio(url);
+    audio.volume = volume;
+    audio.onended = () => setPlaying(false);
+    audioRef.current = audio;
+    audio.play();
+    setPlaying(true);
+  };
+
+  const hasAssets = (config.assetIds ?? []).length > 0;
+
   return (
     <div className="space-y-3">
       <SectionLabel>Musica</SectionLabel>
@@ -377,9 +411,34 @@ function MusicSourceProps({ nodeId, config }: { nodeId: string; config: MusicSou
           ]}
         />
       </div>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <FieldLabel>Volume: {Math.round(volume * 100)}%</FieldLabel>
+          <button
+            onClick={togglePreview}
+            disabled={!hasAssets}
+            title={hasAssets ? (playing ? "Parar prévia" : "Ouvir prévia no volume atual") : "Adicione uma trilha para pré-visualizar"}
+            className={cn(
+              "flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors",
+              playing
+                ? "bg-nyx-cyan-500/20 text-nyx-cyan-400 hover:bg-nyx-cyan-500/30"
+                : "text-nyx-text-secondary hover:text-nyx-text-primary",
+              "disabled:opacity-40 disabled:cursor-not-allowed",
+            )}
+          >
+            {playing ? <Square className="h-3 w-3 fill-current" /> : <Play className="h-3 w-3 fill-current" />}
+            {playing ? "Parar" : "Prévia"}
+          </button>
+        </div>
+        <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => update(nodeId, { volume: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
+      </div>
       <div>
-        <FieldLabel>Volume: {Math.round((config.volume ?? 0.15) * 100)}%</FieldLabel>
-        <input type="range" min={0} max={1} step={0.05} value={config.volume ?? 0.15} onChange={(e) => update(nodeId, { volume: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
+        <FieldLabel>Fade-in: {(config.fadeInMs ?? 0) / 1000}s</FieldLabel>
+        <input type="range" min={0} max={5000} step={100} value={config.fadeInMs ?? 0} onChange={(e) => update(nodeId, { fadeInMs: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
+      </div>
+      <div>
+        <FieldLabel>Fade-out: {(config.fadeOutMs ?? 0) / 1000}s</FieldLabel>
+        <input type="range" min={0} max={5000} step={100} value={config.fadeOutMs ?? 0} onChange={(e) => update(nodeId, { fadeOutMs: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
       </div>
     </div>
   );
@@ -524,7 +583,7 @@ function ActionProps({ nodeId, type, config }: { nodeId: string; type: NodeType;
   }
   if (type === "SetMusic") {
     const cfg = config as SetMusicConfig;
-    return <div><FieldLabel>Volume: {Math.round((cfg.volume ?? 0.15) * 100)}%</FieldLabel><input type="range" min={0} max={1} step={0.05} value={cfg.volume ?? 0.15} onChange={(e) => update(nodeId, { volume: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" /></div>;
+    return <div><FieldLabel>Volume: {Math.round((cfg.volume ?? 0.15) * 100)}%</FieldLabel><input type="range" min={0} max={1} step={0.01} value={cfg.volume ?? 0.15} onChange={(e) => update(nodeId, { volume: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" /></div>;
   }
   if (type === "CameraEffect") {
     const cfg = config as CameraEffectConfig;
@@ -585,7 +644,7 @@ export function PropertiesPanel() {
   }[nodeKind ?? ""];
 
   return (
-    <div className="flex h-full w-full flex-col border-l border-nyx-border bg-nyx-deep">
+    <div className="flex w-full flex-col border border-nyx-border bg-nyx-deep rounded-xl overflow-hidden">
       <AnimatePresence mode="wait">
         {!selectedNode || !nodeType ? (
           <motion.div key="empty" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

@@ -75,6 +75,8 @@ export interface MusicSourceConfig {
   assetIds: string[];
   volume?: number;
   mode?: "random-loop" | "sequential";
+  fadeInMs?: number;
+  fadeOutMs?: number;
 }
 
 export interface OnTimeConfig {
