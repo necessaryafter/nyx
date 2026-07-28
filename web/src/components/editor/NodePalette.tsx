@@ -1,9 +1,8 @@
 import { useCallback, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
+  ArrowRight,
   Captions,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Clapperboard,
   Clock,
   Database,
@@ -14,6 +13,8 @@ import {
   Mic,
   Music,
   Pilcrow,
+  Pin,
+  PinOff,
   Sparkles,
   StepBack,
   StepForward,
@@ -22,13 +23,67 @@ import {
   WholeWord,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
-import { NODE_DEFINITIONS } from "../../lib/nodeDefaults";
+import { NODE_DEFINITIONS, NODE_HANDLES } from "../../lib/nodeDefaults";
 import type { NodeType } from "../../lib/types";
+
+const HANDLE_LABELS: Record<string, string> = {
+  narration: "Narração",
+  media: "Mídia",
+  scene: "Cenas",
+  music: "Trilha",
+  event: "Gatilho",
+  action: "Ação",
+  sfx: "SFX",
+  overlay: "Overlay",
+  source: "Fonte",
+};
+
+const HANDLE_COLORS: Record<string, string> = {
+  narration: "bg-nyx-cyan-500/20 text-nyx-cyan-400 border-nyx-cyan-500/30",
+  media: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  scene: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  music: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  event: "bg-nyx-orange-500/20 text-nyx-orange-400 border-nyx-orange-500/30",
+  action: "bg-nyx-orange-400/20 text-nyx-orange-300 border-nyx-orange-400/30",
+  sfx: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  overlay: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  source: "bg-nyx-cyan-500/20 text-nyx-cyan-400 border-nyx-cyan-500/30",
+};
+
+function HandleTag({ name }: { name: string }) {
+  return (
+    <span className={cn("rounded border px-1.5 py-0.5 text-[10px] font-medium", HANDLE_COLORS[name] ?? "bg-nyx-void text-nyx-text-muted border-nyx-border")}>
+      {HANDLE_LABELS[name] ?? name}
+    </span>
+  );
+}
+
+function ConnectionHint({ type }: { type: NodeType }) {
+  const { inputs, outputs } = NODE_HANDLES[type];
+  if (inputs.length === 0 && outputs.length === 0) return null;
+  return (
+    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+      {inputs.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap">
+          {inputs.map((h) => <HandleTag key={h} name={h} />)}
+        </div>
+      )}
+      {inputs.length > 0 && outputs.length > 0 && (
+        <ArrowRight className="h-3 w-3 shrink-0 text-nyx-text-muted" />
+      )}
+      {outputs.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap">
+          {outputs.map((h) => <HandleTag key={h} name={h} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const NODE_SECTIONS = [
   {
     label: "Fontes",
-    hint: "Materiais de entrada",
+    color: "text-nyx-cyan-500",
     nodes: [
       { type: "NarrationSource" as NodeType, label: "Narração", icon: Mic, color: "text-nyx-cyan-500" },
       { type: "AssetSource" as NodeType, label: "Biblioteca", icon: Database, color: "text-nyx-cyan-500" },
@@ -38,7 +93,7 @@ const NODE_SECTIONS = [
   },
   {
     label: "Reações",
-    hint: "Disparos do pipeline",
+    color: "text-nyx-orange-500",
     nodes: [
       { type: "OnTime" as NodeType, label: "Tempo", icon: Clock, color: "text-nyx-orange-500" },
       { type: "OnWord" as NodeType, label: "Palavra", icon: WholeWord, color: "text-nyx-orange-500" },
@@ -50,7 +105,7 @@ const NODE_SECTIONS = [
   },
   {
     label: "Montagem",
-    hint: "Operações de timeline",
+    color: "text-cyan-400",
     nodes: [
       { type: "SetMedia" as NodeType, label: "Trocar mídia", icon: ImagePlay, color: "text-cyan-400" },
       { type: "ShowOverlay" as NodeType, label: "Overlay", icon: Image, color: "text-cyan-400" },
@@ -62,7 +117,7 @@ const NODE_SECTIONS = [
   },
   {
     label: "Entrega",
-    hint: "Saída renderizável",
+    color: "text-nyx-orange-400",
     nodes: [
       { type: "Render" as NodeType, label: "Render final", icon: Clapperboard, color: "text-nyx-orange-400" },
     ],
@@ -76,10 +131,11 @@ interface NodePaletteProps {
 }
 
 export function NodePalette({ collapsed, onToggle, onDragStart }: NodePaletteProps) {
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(NODE_SECTIONS.map((section) => [section.label, true])),
-  );
   const [openHelp, setOpenHelp] = useState<Partial<Record<NodeType, boolean>>>({});
+  const [isHovered, setIsHovered] = useState(false);
+
+  // expanded = hovered OR pinned (collapsed=false)
+  const isExpanded = isHovered || !collapsed;
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, type: NodeType) => {
@@ -91,130 +147,120 @@ export function NodePalette({ collapsed, onToggle, onDragStart }: NodePalettePro
   );
 
   return (
-    <aside className={cn("flex h-full flex-col border-r border-nyx-border bg-nyx-deep transition-[width] duration-200", collapsed ? "w-12" : "w-full")}>
-      <div className="flex h-11 items-center border-b border-nyx-border">
-        {!collapsed && (
-          <div className="min-w-0 flex-1 px-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-nyx-text-muted">Toolbox</p>
-          </div>
-        )}
+    <div className="pointer-events-none absolute left-0 right-0 top-3 z-10 flex justify-center">
+    <motion.div
+      onHoverStart={() => setIsHovered(true)}
+      onHoverEnd={() => setIsHovered(false)}
+      className="pointer-events-auto overflow-hidden rounded-xl border border-nyx-border bg-nyx-deep/95 shadow-2xl backdrop-blur-sm"
+    >
+      {/* Top bar: section tabs */}
+      <div className="flex items-center gap-1 px-2 py-2">
+        {NODE_SECTIONS.map((section) => {
+          const Icon = section.nodes[0].icon;
+          return (
+            <div
+              key={section.label}
+              className="flex items-center gap-2 rounded-lg px-4 py-2"
+            >
+              <Icon className={cn("h-4 w-4 shrink-0", section.color)} />
+              <span className="whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-nyx-text-secondary">
+                {section.label}
+              </span>
+              <span className="font-mono text-[11px] text-nyx-text-muted">{section.nodes.length}</span>
+            </div>
+          );
+        })}
+
+        {/* Divider + pin button */}
+        <div className="mx-1.5 h-4 w-px bg-nyx-border" />
         <button
           onClick={onToggle}
-          className="flex h-11 w-11 shrink-0 items-center justify-center text-nyx-text-muted transition-colors hover:bg-nyx-hover hover:text-nyx-text-primary"
-          title={collapsed ? "Expandir toolbox" : "Colapsar toolbox"}
-          aria-label={collapsed ? "Expandir toolbox" : "Colapsar toolbox"}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-nyx-text-muted transition-colors hover:bg-nyx-hover hover:text-nyx-text-primary"
+          title={collapsed ? "Fixar aberto" : "Recolher"}
         >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {collapsed ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
-        {NODE_SECTIONS.map((section) => {
-          const isOpen = collapsed || openSections[section.label] !== false;
-
-          return (
-            <section key={section.label} className={cn("px-2.5", collapsed ? "mb-3" : "mb-4")}>
-              {!collapsed && (
-                <button
-                  type="button"
-                  onClick={() => setOpenSections((current) => ({ ...current, [section.label]: !isOpen }))}
-                  className="mb-1 flex w-full items-center gap-2 rounded px-1 py-1.5 text-left transition-colors hover:bg-nyx-hover"
+      {/* Expanded grid: columns per section */}
+      <AnimatePresence initial={false}>
+        {isExpanded && (
+          <motion.div
+            variants={{
+              open:   { height: "auto", opacity: 1, transition: { type: "spring", stiffness: 340, damping: 30, mass: 0.7 } },
+              closed: { height: 0,      opacity: 0, transition: { duration: 0.18, ease: [0.4, 0, 1, 1] } },
+            }}
+            initial="closed"
+            animate="open"
+            exit="closed"
+            style={{ overflow: "hidden" }}
+          >
+            <div className="flex gap-3 border-t border-nyx-border px-4 pb-4 pt-3">
+              {NODE_SECTIONS.map((section, si) => (
+                <motion.div
+                  key={section.label}
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0, transition: { delay: si * 0.05, duration: 0.22, ease: [0.16, 1, 0.3, 1] } }}
+                  exit={{ opacity: 0, transition: { duration: 0 } }}
+                  className="flex flex-col gap-1.5"
                 >
-                  <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-nyx-text-muted transition-transform", !isOpen && "-rotate-90")} />
-                  <span className="min-w-0 flex-1 text-[11px] font-semibold uppercase tracking-wider text-nyx-text-secondary">
+                  <p className={cn("mb-1 whitespace-nowrap text-[11px] font-semibold uppercase tracking-wider", section.color)}>
                     {section.label}
-                  </span>
-                  <span className="font-mono text-[10px] text-nyx-text-muted">{section.nodes.length}</span>
-                </button>
-              )}
+                  </p>
 
-              {isOpen && (
-                <>
-                  {!collapsed && (
-                    <p className="mb-2 px-1 text-[11px] leading-tight text-nyx-text-muted">{section.hint}</p>
-                  )}
+                  {section.nodes.map((node) => {
+                    const definition = NODE_DEFINITIONS[node.type];
+                    const helpOpen = openHelp[node.type] === true;
 
-                  <div className={cn(collapsed ? "space-y-1.5" : "space-y-1")}>
-                    {section.nodes.map((node) => {
-                      const definition = NODE_DEFINITIONS[node.type];
-                      const hasInput = definition.kind !== "source";
-                      const hasOutput = definition.kind !== "output";
-                      const helpOpen = openHelp[node.type] === true;
-                      const title = `${node.label} (${node.type}) - ${definition.description}`;
-
-                      return (
-                        <div
-                          key={node.type}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, node.type)}
-                          title={title}
-                          className={cn(
-                            "group relative rounded-md border border-nyx-border bg-nyx-surface transition-colors duration-100",
-                            "hover:border-nyx-hover hover:bg-nyx-elevated",
-                            collapsed ? "h-9" : "cursor-grab active:cursor-grabbing",
-                          )}
-                        >
-                          <div className={cn("flex items-center", collapsed ? "h-9 justify-center" : "min-h-9 gap-2 px-2.5 py-2")}>
-                            {!collapsed && (
-                              <span className="flex w-3 shrink-0 justify-start" aria-hidden="true">
-                                {hasInput && <span className="h-2 w-2 rounded-full border border-nyx-border bg-nyx-deep group-hover:border-nyx-cyan-500/60" />}
-                              </span>
+                    return (
+                      <div
+                        key={node.type}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, node.type)}
+                        title={`${node.label} — ${definition.description}`}
+                        className="group relative cursor-grab rounded-lg border border-nyx-border bg-nyx-surface transition-colors hover:border-nyx-hover hover:bg-nyx-elevated active:cursor-grabbing"
+                      >
+                        <div className="flex min-w-[160px] items-center gap-2.5 px-3 py-2">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-nyx-void">
+                            <node.icon className={cn("h-4 w-4", node.color)} />
+                          </span>
+                          <span className="flex-1 truncate text-sm font-medium text-nyx-text-primary">
+                            {node.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenHelp((c) => ({ ...c, [node.type]: !helpOpen }));
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            className={cn(
+                              "flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors",
+                              helpOpen
+                                ? "bg-nyx-hover text-nyx-text-secondary"
+                                : "text-nyx-text-muted opacity-0 group-hover:opacity-100 hover:bg-nyx-hover",
                             )}
-
-                            <span className={cn("flex shrink-0 items-center justify-center", collapsed ? "h-6 w-6" : "h-6 w-6 rounded bg-nyx-void")}>
-                              <node.icon className={cn("h-4 w-4", node.color)} />
-                            </span>
-
-                            {!collapsed && (
-                              <>
-                                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-none text-nyx-text-primary">
-                                  {node.label}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenHelp((current) => ({ ...current, [node.type]: !helpOpen }));
-                                  }}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  className={cn(
-                                    "flex h-6 w-6 shrink-0 items-center justify-center rounded text-nyx-text-muted transition-colors",
-                                    helpOpen ? "bg-nyx-hover text-nyx-text-secondary" : "hover:bg-nyx-hover hover:text-nyx-text-primary",
-                                  )}
-                                  aria-label={helpOpen ? `Ocultar ajuda de ${node.label}` : `Mostrar ajuda de ${node.label}`}
-                                >
-                                  <Info className="h-3.5 w-3.5" />
-                                </button>
-                                <span className="flex w-6 shrink-0 items-center justify-end gap-1 opacity-75" aria-hidden="true">
-                                  {hasOutput && (
-                                    <>
-                                      <span className="h-px w-2.5 bg-nyx-border group-hover:bg-nyx-cyan-500/60" />
-                                      <span className="h-2 w-2 rounded-full border border-nyx-border bg-nyx-deep group-hover:border-nyx-cyan-500/60" />
-                                    </>
-                                  )}
-                                </span>
-                              </>
-                            )}
-                          </div>
-
-                          {!collapsed && helpOpen && (
-                            <p className="border-t border-nyx-border/70 px-8 pb-2 pt-1.5 text-[11px] leading-snug text-nyx-text-muted">
-                              {definition.description}
-                              <span className="ml-1 font-mono text-[10px] uppercase tracking-wider text-nyx-text-muted/70">
-                                {node.type}
-                              </span>
-                            </p>
-                          )}
+                          >
+                            <Info className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </section>
-          );
-        })}
-      </div>
-    </aside>
+
+                        {helpOpen && (
+                          <div className="border-t border-nyx-border/70 px-3 pb-2.5 pt-2 space-y-1.5">
+                            <p className="text-xs leading-snug text-nyx-text-muted">{definition.description}</p>
+                            <ConnectionHint type={node.type} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+    </div>
   );
 }

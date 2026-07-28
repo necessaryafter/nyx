@@ -237,7 +237,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   selectedNodeId: null,
   past: [],
   future: [],
-  isPaletteCollapsed: false,
+  isPaletteCollapsed: true,
   isGridVisible: true,
   isSnapEnabled: false,
   templateId: null,

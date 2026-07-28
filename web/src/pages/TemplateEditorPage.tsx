@@ -11,17 +11,20 @@ import {
   useReactFlow,
   type MiniMapNodeProps,
 } from "@xyflow/react";
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from "react-resizable-panels";
 import {
   ArrowLeft,
   Check,
   AlertCircle,
+  Download,
+  Upload,
   Play,
   Monitor,
   Undo2,
   Redo2,
   Grid3x3,
   Maximize2,
+  ZoomIn,
+  ZoomOut,
   X,
 } from "lucide-react";
 import "@xyflow/react/dist/style.css";
@@ -77,10 +80,59 @@ function SaveStatus() {
 }
 
 function EditorTopBar({ onSave, onCreateJob }: { onSave: () => Promise<void>; onCreateJob: () => void }) {
-  const { templateName, setTemplateName, isDirty, templateId, validate } = useEditorStore();
+  const { templateName, setTemplateName, isDirty, templateId, validate, nodes, edges, loadGraph } = useEditorStore();
   const validation = validate();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const payload = JSON.parse(ev.target?.result as string) as {
+          templateName?: string;
+          graph?: { graphNodes: unknown[]; graphEdges: unknown[] };
+        };
+        if (!payload.graph?.graphNodes || !payload.graph?.graphEdges) {
+          throw new Error("JSON inválido: campos graph.graphNodes e graph.graphEdges não encontrados");
+        }
+        const { nodes: flowNodes, edges: flowEdges } = graphToFlow(
+          payload.graph.graphNodes as Parameters<typeof graphToFlow>[0],
+          payload.graph.graphEdges as Parameters<typeof graphToFlow>[1],
+        );
+        loadGraph(flowNodes, flowEdges);
+        if (payload.templateName) setTemplateName(payload.templateName);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Erro ao importar JSON";
+        setImportError(msg);
+        setTimeout(() => setImportError(null), 5000);
+      }
+    };
+    reader.readAsText(file);
+  }, [loadGraph, setTemplateName]);
+
+  const handleExport = useCallback(() => {
+    const graph = flowToGraph(nodes, edges);
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      templateId,
+      templateName,
+      graph,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${templateName.replace(/[^a-z0-9]/gi, "_")}.nyx.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [nodes, edges, templateId, templateName]);
 
   const handleSave = useCallback(async () => {
     if (saving) return;
@@ -121,6 +173,33 @@ function EditorTopBar({ onSave, onCreateJob }: { onSave: () => Promise<void>; on
       </div>
 
       <div className="flex items-center gap-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={handleImport}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          title="Importar template de um arquivo .nyx.json"
+          className="flex items-center gap-1.5 rounded-md border border-nyx-border px-3 py-1.5 text-xs text-nyx-text-muted transition-colors hover:border-nyx-hover hover:text-nyx-text-secondary"
+        >
+          <Upload className="h-3 w-3" />
+          Importar
+        </button>
+        {importError && (
+          <span className="text-[10px] text-nyx-error font-mono">{importError}</span>
+        )}
+        <button
+          onClick={handleExport}
+          title="Exportar template como JSON"
+          className="flex items-center gap-1.5 rounded-md border border-nyx-border px-3 py-1.5 text-xs text-nyx-text-muted transition-colors hover:border-nyx-hover hover:text-nyx-text-secondary"
+        >
+          <Download className="h-3 w-3" />
+          Exportar
+        </button>
+
         <button
           onClick={handleSave}
           disabled={saving}
@@ -257,7 +336,7 @@ function EditorCanvas() {
   }, []);
 
   return (
-    <div className="relative h-full w-full bg-[#09090b]" onDrop={onDrop} onDragOver={onDragOver}>
+    <div className="relative h-full w-full bg-nyx-void" onDrop={onDrop} onDragOver={onDragOver}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -283,17 +362,17 @@ function EditorCanvas() {
             variant={BackgroundVariant.Lines}
             gap={24}
             size={1}
-            color="rgba(255,255,255,0.07)"
+            color="var(--nyx-grid-dot)"
             className="nyx-flow-grid"
           />
         )}
         <MiniMap
-          style={{ background: "#0c0c0e", border: "1px solid #1f1f23" }}
+          style={{ background: "var(--nyx-deep)", border: "1px solid var(--nyx-border)" }}
           maskColor="rgba(0,0,0,0.6)"
           nodeComponent={MiniMapNode}
           zoomable pannable
         />
-        <FlowPanel position="bottom-left" className="m-4">
+        <FlowPanel position="bottom-center" className="mb-4">
           <CanvasToolbar />
         </FlowPanel>
       </ReactFlow>
@@ -304,25 +383,65 @@ function EditorCanvas() {
 function CanvasToolbar() {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const { toggleGrid, undo, redo, isGridVisible } = useEditorStore();
+  const [hovered, setHovered] = useState(false);
 
-  const btnClass = "p-1.5 text-nyx-text-muted hover:bg-nyx-hover hover:text-nyx-text-primary rounded transition-colors";
+  const btnCls = (active?: boolean) =>
+    cn(
+      "flex items-center gap-1.5 rounded-full px-2.5 py-1.5 transition-colors",
+      active
+        ? "bg-nyx-cyan-500/15 text-nyx-cyan-400"
+        : "text-nyx-text-muted hover:bg-nyx-hover hover:text-nyx-text-primary",
+    );
+
+  const Label = ({ text }: { text: string }) => (
+    <AnimatePresence>
+      {hovered && (
+        <motion.span
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: "auto", opacity: 1 }}
+          exit={{ width: 0, opacity: 0 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+          className="overflow-hidden whitespace-nowrap text-[11px] font-medium"
+        >
+          {text}
+        </motion.span>
+      )}
+    </AnimatePresence>
+  );
 
   return (
-    <div className="flex gap-2 rounded-lg border border-nyx-border bg-nyx-surface p-1 shadow-xl">
-      <button onClick={() => zoomIn()} className={btnClass} title="Aumentar Zoom"><span className="text-xs">+</span></button>
-      <button onClick={() => zoomOut()} className={btnClass} title="Diminuir Zoom"><span className="text-xs">−</span></button>
-      <div className="w-px bg-nyx-border mx-1" />
-      <button onClick={() => fitView()} className={btnClass} title="Enquadrar"><Maximize2 className="h-3.5 w-3.5" /></button>
-      <button onClick={toggleGrid} className={cn(btnClass, isGridVisible && "text-nyx-cyan-500 bg-nyx-cyan-500/10")} title="Grade"><Grid3x3 className="h-3.5 w-3.5" /></button>
-      <div className="w-px bg-nyx-border mx-1" />
-      <button onClick={undo} className={btnClass} title="Desfazer"><Undo2 className="h-3.5 w-3.5" /></button>
-      <button onClick={redo} className={btnClass} title="Refazer"><Redo2 className="h-3.5 w-3.5" /></button>
-    </div>
+    <motion.div
+      onHoverStart={() => setHovered(true)}
+      onHoverEnd={() => setHovered(false)}
+      className="flex items-center gap-0.5 rounded-full border border-nyx-border bg-nyx-surface/95 backdrop-blur-sm px-1.5 py-1.5 shadow-xl"
+    >
+      <button onClick={() => zoomIn()} className={btnCls()} title="Ampliar">
+        <ZoomIn className="h-3.5 w-3.5 shrink-0" /><Label text="Ampliar" />
+      </button>
+      <button onClick={() => zoomOut()} className={btnCls()} title="Reduzir">
+        <ZoomOut className="h-3.5 w-3.5 shrink-0" /><Label text="Reduzir" />
+      </button>
+      <div className="h-4 w-px bg-nyx-border mx-0.5 shrink-0" />
+      <button onClick={() => fitView()} className={btnCls()} title="Enquadrar">
+        <Maximize2 className="h-3.5 w-3.5 shrink-0" /><Label text="Enquadrar" />
+      </button>
+      <button onClick={toggleGrid} className={btnCls(isGridVisible)} title="Grade">
+        <Grid3x3 className="h-3.5 w-3.5 shrink-0" /><Label text="Grade" />
+      </button>
+      <div className="h-4 w-px bg-nyx-border mx-0.5 shrink-0" />
+      <button onClick={undo} className={btnCls()} title="Desfazer">
+        <Undo2 className="h-3.5 w-3.5 shrink-0" /><Label text="Desfazer" />
+      </button>
+      <button onClick={redo} className={btnCls()} title="Refazer">
+        <Redo2 className="h-3.5 w-3.5 shrink-0" /><Label text="Refazer" />
+      </button>
+    </motion.div>
   );
 }
 
 function EditorInner({ templateId }: { templateId: string | undefined }) {
   const store = useEditorStore();
+  const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
   const navigate = useNavigate();
   const location = useLocation();
   const presetGraph = (location.state as { graph?: unknown } | null)?.graph;
@@ -450,28 +569,29 @@ function EditorInner({ templateId }: { templateId: string | undefined }) {
             </div>
           )}
 
-          <div className="flex-1 min-h-0 h-full">
-            <PanelGroup orientation="horizontal" className="h-full">
-              <Panel defaultSize={20} minSize={15} className="bg-nyx-deep border-r border-nyx-border">
-                <NodePalette
-                    collapsed={store.isPaletteCollapsed}
-                    onToggle={store.togglePalette}
-                    onDragStart={() => {}}
-                />
-              </Panel>
+          <div className="relative flex-1 min-h-0 overflow-hidden">
+            <EditorCanvas />
 
-              <PanelResizeHandle className="w-px bg-nyx-border hover:bg-nyx-cyan-500 transition-colors" />
+            <NodePalette
+              collapsed={store.isPaletteCollapsed}
+              onToggle={store.togglePalette}
+              onDragStart={() => {}}
+            />
 
-              <Panel defaultSize={55} minSize={30}>
-                <EditorCanvas />
-              </Panel>
-
-              <PanelResizeHandle className="w-px bg-nyx-border hover:bg-nyx-cyan-500 transition-colors" />
-
-              <Panel defaultSize={25} minSize={20} className="bg-nyx-deep border-l border-nyx-border">
-                <PropertiesPanel />
-              </Panel>
-            </PanelGroup>
+            <AnimatePresence>
+              {selectedNodeId && (
+                <motion.div
+                  key="props-panel"
+                  initial={{ x: "100%", opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: "100%", opacity: 0 }}
+                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute right-3 top-3 w-72 z-10 overflow-hidden rounded-xl shadow-2xl max-h-[calc(100%-24px)]"
+                >
+                  <PropertiesPanel />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <ValidationBar />

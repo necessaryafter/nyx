@@ -136,7 +136,14 @@ export function Step2_Narration({
   }, []);
 
   const { data: job } = useJob(jobId);
-  const ttsProvider = (job?.graph?.nodes.find((n) => n.type === "NarrationSource")?.config?.provider as string | undefined) ?? "talkify";
+  const ttsProvider = (job?.graph?.nodes.find((n) => n.type === "NarrationSource")?.config?.provider as "talkify" | undefined) ?? "talkify";
+
+  useEffect(() => {
+    if (!job) return;
+    const narrationNode = job.graph?.nodes.find((n) => n.type === "NarrationSource");
+    const savedText = narrationNode?.config?.text as string | undefined;
+    if (savedText) setScript(savedText);
+  }, [job?.id]);
 
   const startAudio = useStartAudio(jobId);
   const audioAssets = useAssets(0, "audio");
