@@ -1,0 +1,16 @@
+{$DOMAIN} {
+	encode gzip
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# MinIO público: vídeos/assets via URL pré-assinada
+s3.{$DOMAIN} {
+	reverse_proxy minio:9000
+}

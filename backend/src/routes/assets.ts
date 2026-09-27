@@ -10,7 +10,7 @@ import { rateLimit } from "elysia-rate-limit";
 import { requireAuth } from "../auth/session";
 import { database } from "../database";
 import { assets } from "../database/schema/assets";
-import { storageClient as minio, BUCKET_ASSETS } from "@nyx/shared";
+import { storageClient as minio, presignClient, BUCKET_ASSETS } from "@nyx/shared";
 import { uploadAssetSchema, paginationSchema } from "../lib/schemas";
 
 const UPLOAD_TMP = join(tmpdir(), "nyx-uploads");
@@ -215,7 +215,7 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
       return { error: "asset not found" };
     }
 
-    const url = await minio.presignedGetObject(BUCKET_ASSETS, row.storageKey, 3600);
+    const url = await presignClient.presignedGetObject(BUCKET_ASSETS, row.storageKey, 3600);
     return { url };
   })
 

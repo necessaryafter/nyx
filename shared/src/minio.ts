@@ -27,3 +27,19 @@ export const storageClient = isProd
 
 export const BUCKET_ASSETS = process.env.MINIO_BUCKET_ASSETS!;
 export const BUCKET_VIDEOS = process.env.MINIO_BUCKET_VIDEOS!;
+
+// Presigned URLs are opened by the browser, so they must be signed for the public
+// MinIO host (e.g. https://s3.example.com), not the internal docker hostname.
+// Fixed region avoids a network round-trip on presign.
+const publicUrl = process.env.MINIO_PUBLIC_URL ? new URL(process.env.MINIO_PUBLIC_URL) : null;
+
+export const presignClient = isProd || !publicUrl
+  ? storageClient
+  : new Client({
+      endPoint: publicUrl.hostname,
+      port: publicUrl.port ? parseInt(publicUrl.port) : undefined,
+      useSSL: publicUrl.protocol === "https:",
+      region: "us-east-1",
+      accessKey: process.env.MINIO_ACCESS_KEY!,
+      secretKey: process.env.MINIO_SECRET_KEY!,
+    });

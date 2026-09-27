@@ -1,0 +1,113 @@
+# Deploy em uma VPS: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+name: nyx-prod
+x-app: &app
+  build: { context: ., target: app }
+  image: nyx-app
+  restart: unless-stopped
+  env_file: .env.prod
+  environment:
+    DATABASE_URL: postgresql://studio:${POSTGRES_PASSWORD}@postgres:5432/studio
+    REDIS_URL: redis://redis:6379
+    MINIO_ENDPOINT: minio:9000
+    MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+    MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    MINIO_USE_SSL: "false"
+    MINIO_BUCKET_ASSETS: studio-assets
+    MINIO_BUCKET_VIDEOS: studio-videos
+    MINIO_PUBLIC_URL: https://s3.${DOMAIN}
+    BETTER_AUTH_URL: https://${DOMAIN}
+    WHISPERX_URL: http://whisperx:8000
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    minio-init: { condition: service_completed_successfully }
+
+services:
+  caddy:
+    build: { context: ., target: web }
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports: ["80:80", "443:443"]
+    volumes: [caddy_data:/data]
+    depends_on: [backend]
+
+  migrate:
+    <<: *app
+    restart: "no"
+    working_dir: /app/backend
+    command: ["bun", "run", "scripts/migrate.ts"]
+
+  backend:
+    <<: *app
+    working_dir: /app/backend
+    command: ["bun", "run", "src/index.ts"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  renderer:
+    <<: *app
+    working_dir: /app/renderer
+    command: ["bun", "run", "src/index.ts"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  whisperx:
+    build: ./whisperx-service
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: studio
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studio"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes: [minio_data:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+        mc mb --ignore-existing local/studio-assets &&
+        mc mb --ignore-existing local/studio-videos
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+volumes:
+  caddy_data:
+  postgres_data:
+  redis_data:
+  minio_data:

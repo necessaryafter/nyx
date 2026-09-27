@@ -31,6 +31,8 @@ export const auth = createBetterAuth({
       account: account,
     },
   }),
+  // Login por e-mail só fora de produção (sem verificação de e-mail).
+  emailAndPassword: { enabled: process.env.NODE_ENV !== "production" },
   socialProviders: {
     ...(discordEnabled && {
       discord: {

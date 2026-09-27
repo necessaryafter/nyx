@@ -13,8 +13,10 @@ RUN pip install --no-cache-dir \
     torchaudio==2.6.0+cpu \
     --index-url https://download.pytorch.org/whl/cpu
 
-# WhisperX do repositório Git
-RUN pip install --no-cache-dir git+https://github.com/m-bain/whisperx.git
+# WhisperX do repositório Git — extra-index CPU evita que o pip resolva o
+# torch de novo e puxe a build CUDA (uns 3-4 GB de libs nvidia_* inúteis aqui).
+RUN pip install --no-cache-dir git+https://github.com/m-bain/whisperx.git \
+    --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Dependências da aplicação
 COPY requirements.txt .

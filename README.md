@@ -30,3 +30,14 @@ O que existe é a v2: pipeline completo de narração → timestamps → compila
 render → entrega, com upload em chunks para assets grandes, retry de jobs que falharam e
 import/export de templates em `.nyx.json`. Não é um produto acabado nem foi endurecido para
 produção — trate como base de estudo ou ponto de partida.
+
+## Deploy (VPS única com Docker)
+
+1. DNS: aponte `DOMAIN` e `s3.DOMAIN` (registros A) para a VPS. Portas 80/443 abertas.
+2. `cp .env.prod.example .env.prod` e preencha (segredos com `openssl rand -base64 32`).
+3. Login é só via OAuth: configure Google e/ou Discord com callback
+   `https://DOMAIN/api/auth/callback/google` (ou `/discord`, que também vai em `DISCORD_REDIRECT_URI`).
+4. `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`
+
+O Caddy emite o HTTPS, serve o front e faz proxy de `/api` (inclusive WebSocket) para o backend.
+As migrations rodam sozinhas no serviço `migrate`. O WhisperX pede ~4 GB de RAM; recomendo uma VPS com 8 GB ou mais.

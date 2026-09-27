@@ -7,7 +7,7 @@ import { jobs } from "../database/schema/jobs";
 import { templates } from "../database/schema/templates";
 import { assets } from "../database/schema/assets";
 import { creditTransactions } from "../database/schema/credits";
-import { storageClient as minio, BUCKET_ASSETS, BUCKET_VIDEOS } from "@nyx/shared";
+import { storageClient as minio, presignClient, BUCKET_ASSETS, BUCKET_VIDEOS } from "@nyx/shared";
 import { renderQueue, audioQueue } from "../lib/queue";
 import {
   createDraftJobSchema,
@@ -477,6 +477,6 @@ export const jobRoutes = new Elysia({ prefix: "/api/jobs" })
       return { error: "video not ready" };
     }
 
-    const url = await minio.presignedGetObject(BUCKET_VIDEOS, row.videoKey, 3600);
+    const url = await presignClient.presignedGetObject(BUCKET_VIDEOS, row.videoKey, 3600);
     return { url };
   });

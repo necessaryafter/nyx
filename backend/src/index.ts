@@ -34,6 +34,9 @@ const app = new Elysia()
   .use(rateLimit({
     max: 300,
     duration: 60_000,
+    // Behind Caddy every request comes from the proxy IP; Caddy overwrites X-Forwarded-For.
+    generator: (req, server) =>
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? server?.requestIP(req)?.address ?? "",
   }))
   .get("/health", () => ({ status: "ok" }))
   .use(authRoutes)

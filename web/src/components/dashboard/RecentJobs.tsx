@@ -25,16 +25,6 @@ const STATUS_CONFIG: Record<
     dotClass: "bg-nyx-orange-500 animate-pulse",
     textClass: "text-nyx-orange-500",
   },
-  processing: {
-    label: "Renderizando",
-    dotClass: "bg-nyx-orange-500 animate-pulse",
-    textClass: "text-nyx-orange-500",
-  },
-  pending: {
-    label: "Pendente",
-    dotClass: "bg-nyx-text-muted",
-    textClass: "text-nyx-text-muted",
-  },
   draft: {
     label: "Rascunho",
     dotClass: "bg-nyx-text-muted",
