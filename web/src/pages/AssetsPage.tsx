@@ -103,12 +103,18 @@ function AssetCardMenu({
   asset,
   onDelete,
   onRename,
+  onOpenChange,
 }: {
   asset: Asset;
   onDelete: () => void;
   onRename: (name: string) => void;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    onOpenChange?.(v);
+  };
   const [renaming, setRenaming] = useState(false);
   const [nameValue, setNameValue] = useState(asset.name);
 
@@ -153,7 +159,7 @@ function AssetCardMenu({
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(!open)}
         className="rounded p-1 text-nyx-text-muted transition-colors hover:bg-nyx-hover hover:text-nyx-text-primary"
       >
         <MoreVertical className="h-4 w-4" />
@@ -206,6 +212,7 @@ export function AssetCard({
   const renameAsset = useRenameAsset();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [watching, setWatching] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const assetUrl = useAssetUrl(asset.id, watching);
 
   return (
@@ -213,7 +220,15 @@ export function AssetCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3, delay: index * 0.04, ease: [0.16, 1, 0.3, 1] }}
-      className="group relative rounded-xl border border-nyx-border bg-nyx-surface transition-all duration-150 hover:border-nyx-hover hover:shadow-lg"
+      className={cn(
+        "group relative rounded-xl border border-nyx-border bg-nyx-surface transition-all duration-150 hover:border-nyx-hover hover:shadow-lg",
+        // O dropdown do "..." abre pra fora do card (de propósito, senão "Deletar" fica
+        // cortado) — sem isso ele fica escondido atrás do próximo card da grade (mesmo
+        // stacking context por causa do transform do motion.div), e um clique que parece
+        // ir em "Renomear" pode acabar caindo no card de baixo. z-10 levanta o card inteiro
+        // (dropdown incluso) só enquanto o menu estiver aberto.
+        menuOpen && "z-10",
+      )}
     >
       {/* Thumbnail — overflow-hidden só aqui (não no card inteiro), senão corta o
           dropdown do menu "..." que abre pra baixo (Renomear aparecia, Deletar não).
@@ -247,6 +262,7 @@ export function AssetCard({
             asset={asset}
             onDelete={() => setConfirmDelete(true)}
             onRename={(name) => renameAsset.mutate({ id: asset.id, name })}
+            onOpenChange={setMenuOpen}
           />
         </div>
       </div>
