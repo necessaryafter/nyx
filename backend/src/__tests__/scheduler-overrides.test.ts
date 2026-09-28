@@ -1,7 +1,16 @@
 import { describe, it, expect } from "bun:test";
-import { applySchedulerOverrides } from "../lib/scheduler/overrides";
+import { applySchedulerOverrides, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
 import { estimateRun } from "../lib/scheduler/estimate";
 import type { GraphInput } from "../lib/schemas";
+
+const SAMPLE_CARD: SchedulerCardContext = {
+  subreddit: "r/relatos",
+  username: "u/anonimo123",
+  flair: "RELATO",
+  upvotes: "14.2k",
+  comments: "892",
+  timeAgo: "há 5h",
+};
 
 const UUID_BG = "a0000000-0000-4000-8000-000000000001";
 const UUID_MUSIC = "a0000000-0000-4000-8000-000000000002";
@@ -39,6 +48,7 @@ describe("applySchedulerOverrides", () => {
       title: "Um título",
       partIndex: 1,
       partsTotal: 1,
+      card: SAMPLE_CARD,
     });
     const bg = out.nodes.find((n) => n.id === "bg");
     expect(bg?.type).toBe("AssetSource");
@@ -52,6 +62,7 @@ describe("applySchedulerOverrides", () => {
       title: "T",
       partIndex: 1,
       partsTotal: 1,
+      card: SAMPLE_CARD,
     });
     const bg = out.nodes.find((n) => n.id === "bg");
     expect(bg?.type === "AssetSource" && bg.config.assetIds).toEqual([UUID_BG]);
@@ -64,6 +75,7 @@ describe("applySchedulerOverrides", () => {
       title: "T",
       partIndex: 1,
       partsTotal: 1,
+      card: SAMPLE_CARD,
     });
     const music = out.nodes.find((n) => n.id === "music");
     expect(music?.type === "MusicSource" && music.config.assetIds).toEqual([UUID_NEW_MUSIC]);
@@ -76,6 +88,7 @@ describe("applySchedulerOverrides", () => {
       title: "Um título",
       partIndex: 1,
       partsTotal: 3,
+      card: SAMPLE_CARD,
     });
     const card = out.nodes.find((n) => n.id === "card");
     expect(card?.type === "ShowTitleCard" && card.config.title).toBe("Um título");
@@ -88,6 +101,7 @@ describe("applySchedulerOverrides", () => {
       title: "Um título",
       partIndex: 3,
       partsTotal: 3,
+      card: SAMPLE_CARD,
     });
     const card = out.nodes.find((n) => n.id === "card");
     expect(card?.type === "ShowTitleCard" && card.config.title).toBe("Um título — Parte 3");
@@ -101,9 +115,44 @@ describe("applySchedulerOverrides", () => {
       title: "Um título",
       partIndex: 1,
       partsTotal: 1,
+      card: SAMPLE_CARD,
     });
     const card = out.nodes.find((n) => n.id === "card");
     expect(card?.type === "ShowTitleCard" && card.config.title).toBe("Um título");
+  });
+
+  it("applies the run's card identity (subreddit/username/flair/votes) onto the title card", () => {
+    const out = applySchedulerOverrides(baseGraph(), {
+      assetIds: [],
+      musicAssetIds: [],
+      title: "T",
+      partIndex: 1,
+      partsTotal: 1,
+      card: SAMPLE_CARD,
+    });
+    const card = out.nodes.find((n) => n.id === "card");
+    expect(card?.type === "ShowTitleCard" && card.config).toMatchObject(SAMPLE_CARD);
+  });
+
+  it("overrides whatever card identity was baked into the template (dynamic per run, not frozen)", () => {
+    const graph = baseGraph();
+    // O template já vem com uma identidade "de fábrica" — a execução tem que substituir, não somar.
+    const withTemplateCard: GraphInput = {
+      ...graph,
+      nodes: graph.nodes.map((n) =>
+        n.id === "card" ? { ...n, config: { subreddit: "r/velho", username: "u/velho", flair: "VELHO" } } : n,
+      ) as GraphInput["nodes"],
+    };
+    const out = applySchedulerOverrides(withTemplateCard, {
+      assetIds: [],
+      musicAssetIds: [],
+      title: "T",
+      partIndex: 1,
+      partsTotal: 1,
+      card: SAMPLE_CARD,
+    });
+    const card = out.nodes.find((n) => n.id === "card");
+    expect(card?.type === "ShowTitleCard" && card.config.subreddit).toBe(SAMPLE_CARD.subreddit);
   });
 
   it("does not touch nodes it has no rule for", () => {
@@ -114,9 +163,25 @@ describe("applySchedulerOverrides", () => {
       title: "T",
       partIndex: 1,
       partsTotal: 1,
+      card: SAMPLE_CARD,
     });
     const subtitle = out.nodes.find((n) => n.id === "subtitle");
     expect(subtitle).toEqual(graph.nodes.find((n) => n.id === "subtitle"));
+  });
+});
+
+describe("randomEngagement", () => {
+  it("returns well-formed upvotes/comments/timeAgo, different across calls", () => {
+    const results = Array.from({ length: 20 }, () => randomEngagement());
+    for (const r of results) {
+      expect(r.upvotes).toMatch(/^\d+(\.\d)?k$/);
+      expect(r.comments).toMatch(/^\d+$/);
+      expect(typeof r.timeAgo).toBe("string");
+      expect(r.timeAgo.length).toBeGreaterThan(0);
+    }
+    // 20 sorteios independentes não deveriam bater todos no mesmo valor.
+    const uniqueUpvotes = new Set(results.map((r) => r.upvotes));
+    expect(uniqueUpvotes.size).toBeGreaterThan(1);
   });
 });
 

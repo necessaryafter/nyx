@@ -23,11 +23,12 @@ Se uma parte sair fora da tolerância: **uma** nova chamada só para aquela part
 
 ### Montagem do texto final de cada parte
 ```
-parte 1:              "{title} {body} {cta(1)}"        // title termina em . ! ou ? (garantir); sem cta se N=1
-parte n (2..N-1):     "Parte {n}. {body} {cta(n)}"
-parte N (final, N>1): "Parte {N}. {body} {finalCta?}"  // todas as partes 2+ falam "Parte N.", inclusive a última
-N = 1 (vídeo único):  "{title} {body} {finalCta?}"     // sem CTA intermediário
+parte 1:              "{title} {body} {cta(1)}"          // title termina em . ! ou ? (garantir); sem cta se N=1
+parte n (2..N-1):     "{title} Parte {n}. {body} {cta(n)}"
+parte N (final, N>1): "{title} Parte {N}. {body} {finalCta?}"  // todas as partes 2+ repetem o título e falam "Parte N.", inclusive a última
+N = 1 (vídeo único):  "{title} {body} {finalCta?}"       // sem CTA intermediário
 ```
+Repetir o título nas partes 2+ é proposital: quem assiste a parte 2 isolada (feed do TikTok/Shorts não garante ordem) precisa ouvir do que se trata antes do "Parte 2.".
 (`{finalCta?}` = opcional; ausente = nada, sem espaço sobrando.)
 `cta(n)` = `ctaTemplate` com `{n}` → n, `{next}` → n+1, `{total}` → N. Default: `"Curta e comente para a parte {next}."`. Garantir ponto final.
 
@@ -40,8 +41,9 @@ Por que a abertura e o CTA são montados por código e não pela IA: o número d
   - cada parte com ~`targetWords[i]` palavras (passar a lista);
   - frases curtas, pontuação normal, parágrafos separados por linha em branco (o TTS respeita);
   - `title`: pergunta ou frase curta de impacto no estilo de post (ex.: "Eu sou o babaca por…?");
+  - `card.subreddit`/`card.username`/`card.flair`: identidade fake de post (Reddit-like) combinando com o tema — **gerada de novo em toda execução**, nunca fixa no template (é isso que faz o card mudar de vídeo pra vídeo; ver `SchedulerOverrideContext.card` em `SPEC-scheduler.md`). `upvotes`/`comments`/`timeAgo` não vêm da IA — são sorteados em código (`randomEngagement()`), só pra parecer reais;
   - se `avoidTitles` vier, "não repita estas histórias já usadas: …".
-- **Saída estruturada:** `responseMimeType: "application/json"` + `responseSchema { title: string, parts: [{ text: string }] }`. Parser tolerante a cerca de código ```` ```json ```` por segurança.
+- **Saída estruturada:** `responseMimeType: "application/json"` + `responseSchema { title: string, card: { subreddit, username, flair }, parts: [{ text: string }] }`. Parser tolerante a cerca de código ```` ```json ```` por segurança.
 - `temperature: 0.9` (variedade entre execuções recorrentes do mesmo tema).
 
 ## Contratos
@@ -69,8 +71,15 @@ export interface SeriesScriptPart {
   outOfBudget: boolean;
 }
 
+export interface SeriesScriptCard {
+  subreddit: string;
+  username: string;
+  flair: string;
+}
+
 export interface SeriesScript {
   title: string;
+  card: SeriesScriptCard;         // identidade do post — dinâmica por execução, ver SPEC-scheduler.md
   parts: SeriesScriptPart[];
   model: string;
 }

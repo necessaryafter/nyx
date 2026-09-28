@@ -93,8 +93,9 @@ Chamado em create/update/pause/resume/delete. Uma única fonte de verdade para "
 3. Cria `scheduler_runs` (`pending` → `scripting`).
 4. Pré-checagem de créditos: `getBalance(userId) >= partsTotal × (TTS_CREDITS_PER_MIN + RENDER_CREDITS_PER_MIN)` → senão `failed` "créditos insuficientes (precisa X, tem Y)". Não cobra nada aqui; a cobrança real continua por parte, nos services existentes.
 5. `apiKey = resolveGeminiKey(userId)`; `avoidTitles` = títulos das últimas 20 execuções `done|partial` deste scheduler. `script = await generateSeriesScript(...)`. Salva `title`, `script`; status → `rendering`.
+5b. `card = { ...script.card, ...randomEngagement() }` — gerado uma vez por execução, reaproveitado em todas as partes dela.
 6. Para cada parte `i` (1..N), em sequência:
-   a. `graph = applySchedulerOverrides(template.graph, { assetIds, musicAssetIds, title, partIndex: i, partsTotal: N })`
+   a. `graph = applySchedulerOverrides(template.graph, { assetIds, musicAssetIds, title, partIndex: i, partsTotal: N, card })`
    b. `job = createDraftJob(userId, template, graph, { runId, partIndex: i })`
    c. `startAudio(userId, job, { type: "tts", text: part.text, provider, voice, speed })` — provider/voice/speed do `NarrationSource` do template (mesma regra do wizard corrigida ontem)
    d. aguarda o job de áudio terminar: `await audioJob.waitUntilFinished(audioQueueEvents, 10 * 60_000)`; se falhar/timeout → parte `failed`, continua.
@@ -114,10 +115,18 @@ export async function startRender(userId, job): Promise<{ bullJobId: string; cre
 As rotas passam a chamá-los (mesmos códigos HTTP e mensagens; testes existentes em `jobs.test.ts` continuam verdes). As funções lançam `HttpError(status, body)` que a rota traduz.
 
 ### `applySchedulerOverrides(graph, ctx)`
+```ts
+interface SchedulerCardContext { subreddit: string; username: string; flair: string; upvotes: string; comments: string; timeAgo: string; }
+interface SchedulerOverrideContext {
+  assetIds: string[]; musicAssetIds: string[]; title: string; partIndex: number; partsTotal: number;
+  card: SchedulerCardContext; // subreddit/username/flair vêm da IA (SeriesScript.card); upvotes/comments/timeAgo de randomEngagement()
+}
+```
 - Todo `AssetSource` com `assetType ∈ {video, image}` recebe `assetIds = ctx.assetIds` se `ctx.assetIds.length > 0`.
 - Todo `MusicSource` recebe `ctx.musicAssetIds` se não vazio.
-- Todo `ShowTitleCard` recebe `title = ctx.partsTotal > 1 && ctx.partIndex > 1 ? \`${ctx.title} — Parte ${ctx.partIndex}\` : ctx.title` e `minDurationMs = 2500`.
+- Todo `ShowTitleCard` recebe `title = ctx.partsTotal > 1 && ctx.partIndex > 1 ? \`${ctx.title} — Parte ${ctx.partIndex}\` : ctx.title`, `minDurationMs = 2500`, e **todos os campos de `ctx.card`** (substitui qualquer subreddit/usuário/tag/votos que já estivesse no template — é isso que torna o card dinâmico por execução em vez de congelado).
 - Não toca em mais nada. Função pura, testável.
+- `randomEngagement()`: sorteia `upvotes`/`comments`/`timeAgo` (não vêm da IA, só cosméticos). Também pura, exportada de `overrides.ts`.
 
 ## Mudança pequena no renderer (única)
 

@@ -23,8 +23,16 @@ export interface SeriesScriptPart {
   outOfBudget: boolean;
 }
 
+/** Identidade do post fake (Reddit-like) — gerada pela IA, junto com o roteiro, pra combinar com o tema. */
+export interface SeriesScriptCard {
+  subreddit: string;
+  username: string;
+  flair: string;
+}
+
 export interface SeriesScript {
   title: string;
+  card: SeriesScriptCard;
   parts: SeriesScriptPart[];
   model: string;
 }
@@ -57,11 +65,12 @@ export function wordBudget(minutes: number, wpm: number, overheadWords: number):
  * A abertura e o CTA são responsabilidade do sistema, não da IA — o número
  * da parte tem que estar sempre certo, e a parte 1 vira o card de título.
  *
- * Regra (todas as partes 2..N, inclusive a última, falam "Parte N."; só a
- * última troca o CTA de "próxima parte" pelo CTA final, que é opcional):
- *   parte 1:        "{title} {body} {cta(1)}"        (sem cta se for parte única)
- *   parte 2..N-1:   "Parte {n}. {body} {cta(n)}"
- *   parte N (final):"Parte {N}. {body} {finalCta?}"  (parte 1 se N=1: "{title} {body} {finalCta?}")
+ * Regra (todas as partes 2..N, inclusive a última, repetem o título falado
+ * junto com "Parte N."; só a última troca o CTA de "próxima parte" pelo CTA
+ * final, que é opcional):
+ *   parte 1:        "{title} {body} {cta(1)}"              (sem cta se for parte única)
+ *   parte 2..N-1:   "{title} Parte {n}. {body} {cta(n)}"
+ *   parte N (final):"{title} Parte {N}. {body} {finalCta?}" (parte 1 se N=1: "{title} {body} {finalCta?}")
  */
 export function assembleParts(
   title: string,
@@ -77,7 +86,7 @@ export function assembleParts(
     const isLast = n === total;
     const body = rawBody.trim();
 
-    const opener = isFirst ? cleanTitle : `Parte ${n}.`;
+    const opener = isFirst ? cleanTitle : `${cleanTitle} Parte ${n}.`;
     const cta = isLast
       ? (opts.finalCtaTemplate ? applyCta(opts.finalCtaTemplate, n, total) : "")
       : total > 1
@@ -101,6 +110,7 @@ export function assembleParts(
 
 interface RawSeries {
   title: string;
+  card: SeriesScriptCard;
   parts: Array<{ text: string }>;
 }
 
@@ -116,6 +126,10 @@ function parseSeriesJson(raw: string, expectedParts: number): RawSeries {
   if (!candidate || typeof candidate.title !== "string" || !Array.isArray(candidate.parts)) {
     throw new Error("Resposta da IA fora do formato esperado (title + parts)");
   }
+  const card = candidate.card;
+  if (!card || typeof card.subreddit !== "string" || typeof card.username !== "string" || typeof card.flair !== "string") {
+    throw new Error("Resposta da IA fora do formato esperado (card.subreddit/username/flair)");
+  }
   if (candidate.parts.length !== expectedParts) {
     throw new Error(`Esperava ${expectedParts} partes, a IA devolveu ${candidate.parts.length}`);
   }
@@ -126,6 +140,15 @@ const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING },
+    card: {
+      type: Type.OBJECT,
+      properties: {
+        subreddit: { type: Type.STRING },
+        username: { type: Type.STRING },
+        flair: { type: Type.STRING },
+      },
+      required: ["subreddit", "username", "flair"],
+    },
     parts: {
       type: Type.ARRAY,
       items: {
@@ -135,7 +158,7 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["title", "parts"],
+  required: ["title", "card", "parts"],
 };
 
 async function callGemini(
@@ -177,11 +200,11 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
   const wpm = input.wordsPerMinute ?? DEFAULT_WPM;
   const ctaTemplate = input.ctaTemplate ?? DEFAULT_CTA;
 
-  // Overhead estimado por parte: abertura ("Parte N." ou o título) + CTA, se houver.
+  // Overhead estimado por parte: abertura (título sozinho, ou título + "Parte N.") + CTA, se houver.
   const targetWordsPerPart = Array.from({ length: input.parts }, (_, i) => {
     const n = i + 1;
     const isLast = n === input.parts;
-    const opener = n === 1 ? 6 : 2; // título ~6 palavras; "Parte N." = 2
+    const opener = n === 1 ? 6 : 8; // título ~6 palavras (+ "Parte N." = 2 nas partes 2+)
     const ctaWords = isLast
       ? (input.finalCtaTemplate ? countWords(input.finalCtaTemplate) : 0)
       : input.parts > 1
@@ -211,5 +234,5 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
     );
   }
 
-  return { title: raw.title, parts, model: input.model };
+  return { title: raw.title, card: raw.card, parts, model: input.model };
 }

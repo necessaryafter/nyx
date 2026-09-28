@@ -6,7 +6,7 @@ import { jobs } from "../database/schema/jobs";
 import { templates } from "../database/schema/templates";
 import { audioQueue, renderQueue, audioQueueEvents, renderQueueEvents } from "../lib/queue";
 import { createDraftJob, startAudio, startRender } from "../lib/jobs.service";
-import { applySchedulerOverrides } from "../lib/scheduler/overrides";
+import { applySchedulerOverrides, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
 import { estimateRun } from "../lib/scheduler/estimate";
 import { generateSeriesScript, type SeriesScript } from "../lib/ai/seriesScript";
 import { resolveGeminiKey } from "../lib/ai/gemini";
@@ -58,6 +58,7 @@ async function runOnePart(
     provider: "talkify" | "edge";
     voice: string | undefined;
     speed: number | undefined;
+    card: SchedulerCardContext;
   },
 ): Promise<void> {
   const overriddenGraph = applySchedulerOverrides(ctx.graph, {
@@ -66,6 +67,7 @@ async function runOnePart(
     title: ctx.title,
     partIndex: part.index,
     partsTotal: ctx.partsTotal,
+    card: ctx.card,
   });
 
   const job = await createDraftJob(ctx.userId, ctx.template, overriddenGraph, {
@@ -215,6 +217,12 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
   const narrationCfg = narrationNode?.type === "NarrationSource" ? narrationNode.config : undefined;
   const provider = narrationCfg?.provider === "edge" ? ("edge" as const) : ("talkify" as const);
 
+  // Identidade do post: subreddit/usuário/tag vêm da IA (junto do roteiro),
+  // votos/comentários/tempo são só cosméticos — gerados uma vez aqui e
+  // reaproveitados em todas as partes desta execução (mas mudam a cada
+  // execução nova, em vez de ficar congelado no template).
+  const card: SchedulerCardContext = { ...script.card, ...randomEngagement() };
+
   let partsDone = 0;
 
   for (const part of script.parts) {
@@ -230,6 +238,7 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
         provider,
         voice: narrationCfg?.voice,
         speed: narrationCfg?.speed,
+        card,
       });
       partsDone++;
     } catch (err) {

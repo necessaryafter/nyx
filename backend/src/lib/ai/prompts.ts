@@ -46,4 +46,10 @@ DIRETRIZES DE SÉRIE EM PARTES:
 - NÃO escreva chamadas para curtir/comentar/seguir — o sistema adiciona isso no fim de cada parte.
 - NÃO repita o título dentro do corpo do texto.
 - Cada parte deve ter aproximadamente o número de palavras informado para ela.
-- title: uma frase curta de impacto ou pergunta, no estilo de título de post (ex: "Eu sou o babaca por expor o colega que criou uma denúncia falsa contra mim?").`;
+- title: uma frase curta de impacto ou pergunta, no estilo de título de post (ex: "Eu sou o babaca por expor o colega que criou uma denúncia falsa contra mim?").
+
+O resultado também simula um post de rede social (tipo Reddit) sobre essa história. Gere, combinando com o tema:
+- card.subreddit: nome de uma comunidade fictícia, formato "r/nomecurto" (minúsculo, sem espaço, sem acento).
+- card.username: nome de usuário fictício do autor do post, formato "u/nome_de_usuario" (minúsculo, sem espaço).
+- card.flair: uma tag de categoria bem curta em CAIXA ALTA (1 a 3 palavras), ex: "RELATO", "CONFISSÃO", "DESABAFO ANÔNIMO".
+Esses três valores devem mudar a cada história nova — nunca repita os de uma história anterior.`;

@@ -136,7 +136,8 @@ Convenções: nomes em inglês no código, textos de UI em pt-BR direto e sem hy
 1. Templates suportados na v1: só os **sem `SceneSource`** (fundo fixo/pool). Template com slots de cena exige escolha manual de mídia por cena, incompatível com lote automático. A criação do scheduler valida e recusa com mensagem clara.
 2. Velocidade de fala pra converter minutos em palavras: **150 palavras/minuto** (medido nos testes com Antonio: 110 palavras → 44–45 s). Constante configurável, não por voz na v1.
 3. Duração é **aproximada** (±15%). Não regeneramos infinitamente pra bater o tempo exato.
-4. Partes 2+ começam faladas com **"Parte N."** e o card de título mostra o título da história com "— Parte N". Parte 1 começa com o título (que já vira o card).
+4. Partes 2+ começam faladas repetindo **o título + "Parte N."** e o card de título mostra o título da história com "— Parte N". Parte 1 começa só com o título (que já vira o card).
+4b. O card (subreddit/usuário/tag/votos/comentários/tempo) é **dinâmico por execução**: subreddit/usuário/tag vêm da IA junto do roteiro (combinando com o tema), votos/comentários/tempo são sorteados em código — nunca fica congelado no template. Todas as partes da mesma execução compartilham a mesma identidade (é o mesmo "post"); execuções diferentes do mesmo scheduler geram identidades diferentes.
 5. Créditos: cada parte cobra como um job normal (TTS + render). Antes de começar a execução o worker checa saldo pro total estimado e falha cedo se não der.
 6. Limites v1: até **10 partes**, de **0,5 a 10 min** cada; até **10 schedulers ativos** por usuário.
 7. Timezone do cron: a do navegador de quem cria (enviada pelo front), default `America/Sao_Paulo`.

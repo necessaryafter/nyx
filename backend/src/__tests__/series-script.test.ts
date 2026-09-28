@@ -72,16 +72,16 @@ describe("assembleParts", () => {
 
     expect(parts).toHaveLength(3);
     expect(parts[0]!.text).toBe("Eu sou o babaca? corpo 1 Curta e comente para a parte 2.");
-    expect(parts[1]!.text).toBe("Parte 2. corpo 2 Curta e comente para a parte 3.");
-    expect(parts[2]!.text).toBe("Parte 3. corpo 3 Foi isso, comenta o que achou.");
+    expect(parts[1]!.text).toBe("Eu sou o babaca? Parte 2. corpo 2 Curta e comente para a parte 3.");
+    expect(parts[2]!.text).toBe("Eu sou o babaca? Parte 3. corpo 3 Foi isso, comenta o que achou.");
   });
 
-  it("final part has no finalCta when none is provided", () => {
+  it("non-first parts repeat the title before 'Parte N.'", () => {
     const parts = assembleParts("T", ["a", "b"], {
       ctaTemplate: "Curta e comente para a parte {next}.",
       targetWords: [10, 10],
     });
-    expect(parts[1]!.text).toBe("Parte 2. b");
+    expect(parts[1]!.text).toBe("T. Parte 2. b");
   });
 
   it("adds a trailing period to a title without one", () => {
@@ -113,6 +113,8 @@ describe("assembleParts", () => {
   });
 });
 
+const FAKE_CARD = { subreddit: "r/relatos", username: "u/anonimo123", flair: "RELATO" };
+
 function mockGeminiResponse(text: string) {
   return {
     models: {
@@ -125,7 +127,7 @@ describe("generateSeriesScript", () => {
   it("calls Gemini once when every part is within budget", async () => {
     const body = new Array(140).fill("palavra").join(" ");
     const fakeClient = mockGeminiResponse(
-      JSON.stringify({ title: "Um título qualquer", parts: [{ text: body }] }),
+      JSON.stringify({ title: "Um título qualquer", card: FAKE_CARD, parts: [{ text: body }] }),
     );
     const createGeminiSpy = spyOn(geminiLib, "createGemini").mockReturnValue(fakeClient as never);
 
@@ -152,7 +154,7 @@ describe("generateSeriesScript", () => {
           call++;
           const body = call === 1 ? shortBody : fixedBody;
           return Promise.resolve({
-            text: JSON.stringify({ title: "T", parts: [{ text: body }] }),
+            text: JSON.stringify({ title: "T", card: FAKE_CARD, parts: [{ text: body }] }),
           });
         }),
       },
@@ -173,7 +175,7 @@ describe("generateSeriesScript", () => {
 
   it("throws a clear error when Gemini returns the wrong number of parts", async () => {
     const fakeClient = mockGeminiResponse(
-      JSON.stringify({ title: "T", parts: [{ text: "só uma" }] }),
+      JSON.stringify({ title: "T", card: FAKE_CARD, parts: [{ text: "só uma" }] }),
     );
     spyOn(geminiLib, "createGemini").mockReturnValue(fakeClient as never);
 
@@ -190,7 +192,7 @@ describe("generateSeriesScript", () => {
 
   it("parses a response wrapped in a ```json code fence", async () => {
     const body = new Array(140).fill("palavra").join(" ");
-    const fenced = "```json\n" + JSON.stringify({ title: "T", parts: [{ text: body }] }) + "\n```";
+    const fenced = "```json\n" + JSON.stringify({ title: "T", card: FAKE_CARD, parts: [{ text: body }] }) + "\n```";
     const fakeClient = mockGeminiResponse(fenced);
     spyOn(geminiLib, "createGemini").mockReturnValue(fakeClient as never);
 
