@@ -324,7 +324,7 @@ async function mixSfx(basePath: string, sfxList: PendingSfx[], workDir: string):
   return sfxOut;
 }
 
-function buildScaleFilter(fit: "cover" | "contain", w: number, h: number): string {
+export function buildScaleFilter(fit: "cover" | "contain", w: number, h: number): string {
   return fit === "cover"
     ? `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`
     : `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`;
