@@ -29,6 +29,11 @@ export const mockSchedulerQueue = {
   getJobSchedulers: mock(() => Promise.resolve([])),
 };
 
+export const mockAssetImportQueue = {
+  add: mock(() => Promise.resolve({ id: "bull-asset-import-job-1" })),
+  getJob: mock(() => Promise.resolve(null)),
+};
+
 const mockQueueEvents = {
   on: mock(() => {}),
 };
@@ -53,8 +58,10 @@ mock.module("../../lib/queue", () => ({
   renderQueue: mockRenderQueue,
   audioQueue: mockAudioQueue,
   schedulerQueue: mockSchedulerQueue,
+  assetImportQueue: mockAssetImportQueue,
   renderQueueEvents: mockQueueEvents,
   audioQueueEvents: mockQueueEvents,
+  assetImportQueueEvents: mockQueueEvents,
 }));
 mock.module("../../lib/logger", () => ({ logger: mockLogger }));
 

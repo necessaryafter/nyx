@@ -1,10 +1,6 @@
 import { Elysia } from "elysia";
 import { randomUUID } from "crypto";
-import { Readable, PassThrough } from "stream";
-import { createReadStream } from "fs";
-import { mkdir, writeFile, readFile, rm } from "fs/promises";
-import { tmpdir } from "os";
-import { join } from "path";
+import { Readable } from "stream";
 import { eq, and, count, desc, ilike } from "drizzle-orm";
 import { rateLimit } from "elysia-rate-limit";
 import { requireAuth } from "../auth/session";
@@ -12,8 +8,12 @@ import { database } from "../database";
 import { assets } from "../database/schema/assets";
 import { storageClient as minio, presignClient, BUCKET_ASSETS } from "@nyx/shared";
 import { uploadAssetSchema, paginationSchema } from "../lib/schemas";
+import { ChunkedUploadError, startChunkedUpload, writeUploadChunk, completeChunkedUpload } from "../lib/chunkedUpload";
 
-const UPLOAD_TMP = join(tmpdir(), "nyx-uploads");
+interface UploadMeta {
+  name: string;
+  type: "video" | "audio" | "text" | "image";
+}
 
 export const assetRoutes = new Elysia({ prefix: "/api/assets" })
   .use(requireAuth)
@@ -28,13 +28,11 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
       return { error: "invalid fields", details: parsed.error.flatten() };
     }
 
-    const assetId = randomUUID();
-    const chunkDir = join(UPLOAD_TMP, assetId);
-    await mkdir(chunkDir, { recursive: true });
-    await writeFile(
-      join(chunkDir, "meta.json"),
-      JSON.stringify({ userId: session.user.id, name: parsed.data.name, type: parsed.data.type }),
-    );
+    const assetId = await startChunkedUpload<UploadMeta>({
+      userId: session.user.id,
+      name: parsed.data.name,
+      type: parsed.data.type,
+    });
 
     return { assetId };
   })
@@ -47,23 +45,13 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
       return { error: "invalid chunk params" };
     }
 
-    const chunkDir = join(UPLOAD_TMP, params.assetId);
-    let meta: { userId: string; name: string; type: string };
     try {
-      meta = JSON.parse(await readFile(join(chunkDir, "meta.json"), "utf8"));
-    } catch {
-      set.status = 404;
-      return { error: "upload not found" };
-    }
-
-    if (meta.userId !== session.user.id) {
-      set.status = 403;
-      return { error: "forbidden" };
-    }
-
-    try {
-      await writeFile(join(chunkDir, `${index}.chunk`), Buffer.from(body as ArrayBuffer));
+      await writeUploadChunk(params.assetId, session.user.id, index, Buffer.from(body as ArrayBuffer));
     } catch (err) {
+      if (err instanceof ChunkedUploadError) {
+        set.status = err.status;
+        return { error: err.message };
+      }
       console.error(`[chunk upload] failed writing chunk ${index} for ${params.assetId}:`, err);
       set.status = 500;
       return { error: "failed to write chunk", detail: String(err) };
@@ -81,44 +69,31 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
       return { error: "invalid fields" };
     }
 
-    const chunkDir = join(UPLOAD_TMP, params.assetId);
-    let meta: { userId: string; name: string; type: string };
-    try {
-      meta = JSON.parse(await readFile(join(chunkDir, "meta.json"), "utf8"));
-    } catch {
-      set.status = 404;
-      return { error: "upload not found" };
-    }
-
-    if (meta.userId !== session.user.id) {
-      set.status = 403;
-      return { error: "forbidden" };
-    }
-
     const { assetId } = params;
     const userId = session.user.id;
-    const storageKey = `${userId}/${assetId}/${meta.name}`;
 
-    const pass = new PassThrough();
-    const pipeChunks = async () => {
-      for (let i = 0; i < totalChunks; i++) {
-        await new Promise<void>((resolve, reject) => {
-          const rs = createReadStream(join(chunkDir, `${i}.chunk`));
-          rs.on("error", reject);
-          rs.on("end", resolve);
-          rs.pipe(pass, { end: false });
-        });
+    let meta: UploadMeta;
+    let storageKey: string;
+    try {
+      ({ meta, storageKey } = await completeChunkedUpload<UploadMeta>(
+        assetId,
+        userId,
+        totalChunks,
+        totalSize,
+        BUCKET_ASSETS,
+        (m) => `${userId}/${assetId}/${m.name}`,
+      ));
+    } catch (err) {
+      if (err instanceof ChunkedUploadError) {
+        set.status = err.status;
+        return { error: err.message };
       }
-      pass.end();
-    };
-    pipeChunks().catch((err) => pass.destroy(err));
-
-    await minio.putObject(BUCKET_ASSETS, storageKey, pass, totalSize);
-    await rm(chunkDir, { recursive: true, force: true });
+      throw err;
+    }
 
     const [row] = await database
       .insert(assets)
-      .values({ id: assetId, userId, name: meta.name, type: meta.type as "video" | "audio" | "text" | "image", storageKey, sizeBytes: totalSize })
+      .values({ id: assetId, userId, name: meta.name, type: meta.type, storageKey, sizeBytes: totalSize })
       .returning();
 
     set.status = 201;

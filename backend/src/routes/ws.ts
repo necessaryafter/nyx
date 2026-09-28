@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { auth } from "../auth/auth";
 import { database } from "../database";
 import { jobs } from "../database/schema/jobs";
-import { renderQueue, audioQueue, renderQueueEvents, audioQueueEvents } from "../lib/queue";
+import { assetImportBatches } from "../database/schema/assetImports";
+import { renderQueue, audioQueue, renderQueueEvents, audioQueueEvents, assetImportQueue, assetImportQueueEvents } from "../lib/queue";
 import { logger } from "@nyx/shared";
 
 // Track connections by userId
@@ -110,6 +111,33 @@ audioQueueEvents.on("failed", async ({ jobId: bullJobId }) => {
   } catch (err) {
     logger.error({ err, bullJobId }, "failed to broadcast audio failure");
   }
+});
+
+// ── Asset-import queue events ──
+
+async function broadcastImportUpdate(batchId: string) {
+  try {
+    const [batch] = await database
+      .select({ userId: assetImportBatches.userId, status: assetImportBatches.status })
+      .from(assetImportBatches)
+      .where(eq(assetImportBatches.id, batchId))
+      .limit(1);
+
+    if (!batch) return;
+    broadcast(batch.userId, { type: "import:status", batchId, status: batch.status });
+  } catch (err) {
+    logger.error({ err, batchId }, "failed to broadcast import update");
+  }
+}
+
+assetImportQueueEvents.on("completed", async ({ jobId }) => {
+  const job = await assetImportQueue.getJob(jobId);
+  if (job?.data?.batchId) await broadcastImportUpdate(job.data.batchId as string);
+});
+
+assetImportQueueEvents.on("failed", async ({ jobId }) => {
+  const job = await assetImportQueue.getJob(jobId);
+  if (job?.data?.batchId) await broadcastImportUpdate(job.data.batchId as string);
 });
 
 export const wsRoutes = new Elysia({ prefix: "/api" })

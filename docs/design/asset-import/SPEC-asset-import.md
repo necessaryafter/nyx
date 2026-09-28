@@ -86,7 +86,7 @@ Job: `{ batchId: string }`, `attempts: 1` (mesma lógica do scheduler — falhou
 
 ## API REST (`/api/asset-imports`, `requireAuth`)
 
-Upload em 3 passos, mesmo padrão de `/api/assets/upload/multipart/*` — mas o "complete" monta o arquivo localmente (pra rodar ffmpeg depois) em vez de streamar direto pro MinIO. Extraí a lógica de reassemblar chunks em `backend/src/lib/chunkedUpload.ts`, reaproveitada pelos dois fluxos (assets normais continuam streamando direto, sem mudança de comportamento lá).
+Upload em 3 passos, mesmo padrão de `/api/assets/upload/multipart/*` — o "complete" também streama direto pro MinIO como source do lote (sem montar o arquivo localmente no backend): o worker do renderer já baixa o source do MinIO pra um tmpdir local antes de rodar ffmpeg (reaproveita `downloadAsset` de `renderer/src/prepare/assets.ts`), então não faz sentido montar o arquivo duas vezes. Extraí a lógica de reassemblar chunks em `backend/src/lib/chunkedUpload.ts`, reaproveitada pelos dois fluxos (assets normais continuam com o mesmo comportamento).
 
 | Método | Rota | O quê |
 |---|---|---|
@@ -136,7 +136,7 @@ Mesmo padrão de `routes/schedulers.ts`: Zod pra validação, `set.status` + `{ 
 ```
 ASSET_IMPORT_MAX_SEGMENTS=30   # teto de cortes por vídeo antes de desistir
 ```
-(`backend/.env.example` e `renderer/.env.example` — o backend valida antes de enfileirar não faz sentido aqui, quem decide é o worker no renderer, que é quem conta os segmentos de verdade; então essa env vive no `renderer/.env`.)
+Vive só em `renderer/.env` (não existe `renderer/.env.example` no repo hoje) — quem decide é o worker, que é quem conta os segmentos de verdade; validar no backend antes de enfileirar não faz sentido aqui.
 
 ### Limpeza de lotes abandonados
 Sem cron novo: `// ponytail: lazy cleanup — sem scheduler dedicado, só varre quando alguém mexe na lista.` A cada `POST /upload/start` (antes de criar um lote novo), apaga (linha + objetos no MinIO) os lotes do mesmo usuário com mais de 7 dias em qualquer status que não seja `done`. Se isso não for suficiente na prática (usuário nunca volta a criar um lote novo), upgrade natural é um cron de verdade — mesmo mecanismo que o `job-scheduler` já usa (BullMQ Job Scheduler).

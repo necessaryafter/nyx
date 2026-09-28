@@ -14,6 +14,7 @@ import { wsRoutes } from "./routes/ws";
 import { aiRoutes } from "./routes/ai";
 import { imageRoutes } from "./routes/images";
 import { schedulerRoutes } from "./routes/schedulers";
+import { assetImportRoutes } from "./routes/assetImports";
 import { startSchedulerWorker } from "./workers/scheduler.worker";
 import { reconcileAllSchedulers } from "./lib/scheduler/sync";
 
@@ -53,6 +54,7 @@ const app = new Elysia()
   .use(aiRoutes)
   .use(imageRoutes)
   .use(schedulerRoutes)
+  .use(assetImportRoutes)
   .listen({ port: process.env.PORT ?? 3000, maxRequestBodySize: 4 * 1024 * 1024 * 1024, idleTimeout: 255 });
 
 logger.info(`API running at http://${app.server?.hostname}:${app.server?.port}`);

@@ -34,6 +34,31 @@ export const jobs = pgTable("jobs", {
   index("jobs_status_idx").on(t.status),
 ]);
 
+export const assetImportStatusEnum = pgEnum("asset_import_status", [
+  "detecting", "awaiting_fallback_choice", "awaiting_review", "done", "discarded", "failed",
+]);
+
+export interface ImportSegment {
+  index: number;
+  startMs: number;
+  endMs: number;
+  clipStorageKey: string;
+  thumbnailKey: string;
+  selected: boolean;
+  name?: string;
+}
+
+// Mirror de asset_import_batches (só as colunas que o worker lê/escreve).
+export const assetImportBatches = pgTable("asset_import_batches", {
+  id: uuid("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  sourceStorageKey: text("source_storage_key").notNull(),
+  sourceDurationMs: integer("source_duration_ms"),
+  status: assetImportStatusEnum("status").notNull().default("detecting"),
+  segments: jsonb("segments").$type<ImportSegment[]>().notNull().default([]),
+  error: text("error"),
+}, () => []);
+
 export const integrations = pgTable("integrations", {
   id: uuid("id").primaryKey(),
   userId: text("user_id").notNull(),

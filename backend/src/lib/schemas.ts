@@ -346,6 +346,21 @@ export const schedulerEstimateQuerySchema = z.object({
   minutesPerPart: z.coerce.number().min(0.5).max(10).optional(),
 }).superRefine(checkModeFields);
 
+// ── asset-import ──
+
+export const startImportSchema = z.object({
+  name: z.string().min(1),
+});
+
+export const fallbackImportSchema = z.object({
+  mode: z.enum(["fixed", "single"]),
+});
+
+export const confirmImportSchema = z.object({
+  selectedIndexes: z.array(z.number().int().positive()).min(1),
+  names: z.record(z.coerce.number(), z.string().min(1)).optional(),
+});
+
 export const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),

@@ -50,6 +50,13 @@
       "when": 1790626830690,
       "tag": "0006_smart_the_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790632256586,
+      "tag": "0007_unusual_vargas",
+      "breakpoints": true
     }
   ]
 }

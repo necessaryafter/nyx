@@ -1,13 +1,14 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import { eq, inArray, and } from "drizzle-orm";
 import postgres from "postgres";
-import { jobs, assets, integrations } from "./schema";
+import { jobs, assets, integrations, assetImportBatches, type ImportSegment } from "./schema";
 import type { Graph } from "../graph";
 
 export { jobs } from "./schema";
+export type { ImportSegment } from "./schema";
 
 const client = postgres(process.env.DATABASE_URL!);
-export const db = drizzle(client, { schema: { jobs, assets, integrations } });
+export const db = drizzle(client, { schema: { jobs, assets, integrations, assetImportBatches } });
 
 export async function fetchJob(jobId: string) {
   const row = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
@@ -44,6 +45,24 @@ export async function resolveAssetKeys(assetIds: string[]): Promise<Map<string, 
   if (assetIds.length === 0) return new Map();
   const rows = await db.select({ id: assets.id, storageKey: assets.storageKey }).from(assets).where(inArray(assets.id, assetIds));
   return new Map(rows.map((r) => [r.id, r.storageKey]));
+}
+
+export async function fetchImportBatch(batchId: string) {
+  const [row] = await db.select().from(assetImportBatches).where(eq(assetImportBatches.id, batchId)).limit(1);
+  if (!row) throw new Error(`import batch ${batchId} not found`);
+  return row;
+}
+
+export async function updateImportBatch(
+  batchId: string,
+  patch: Partial<{
+    status: (typeof assetImportBatches.$inferSelect)["status"];
+    sourceDurationMs: number;
+    segments: ImportSegment[];
+    error: string | null;
+  }>,
+) {
+  await db.update(assetImportBatches).set(patch).where(eq(assetImportBatches.id, batchId));
 }
 
 export async function fetchUserIntegration(userId: string, provider: string) {

@@ -7,6 +7,7 @@ import { creditTransactions, creditTransactionsRelations } from "./schema/credit
 import { integrations } from "./schema/integrations";
 import { apiKeys } from "./schema/api-keys";
 import { schedulers, schedulerRuns, schedulersRelations, schedulerRunsRelations } from "./schema/schedulers";
+import { assetImportBatches } from "./schema/assetImports";
 import {
   user, session, account, verification,
   userRelations, sessionRelations, accountRelations,
@@ -33,6 +34,7 @@ const schema = {
   schedulerRuns,
   schedulersRelations,
   schedulerRunsRelations,
+  assetImportBatches,
 };
 
 const client = postgres(process.env.DATABASE_URL!);
