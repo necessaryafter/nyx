@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Check, X, Play } from "lucide-react";
+import { Check, X, Play, Trash2 } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { cn } from "../../lib/cn";
-import { useImportBatch, useConfirmImport, useDiscardImport } from "../../hooks/useAssetImports";
+import { useImportBatch, useConfirmImport, useDiscardImport, useDeleteSegment } from "../../hooks/useAssetImports";
 import { VideoPreviewModal } from "./VideoPreviewModal";
 import type { ImportSegment } from "../../lib/types";
 
@@ -20,6 +20,7 @@ export function ImportReviewModal({ batchId, onClose }: Props) {
   const { data: batch, isPending } = useImportBatch(batchId);
   const confirmImport = useConfirmImport(batchId);
   const discardImport = useDiscardImport();
+  const deleteSegment = useDeleteSegment(batchId);
   const [selected, setSelected] = useState<Set<number> | null>(null);
   const [names, setNames] = useState<Record<number, string>>({});
   const [previewSeg, setPreviewSeg] = useState<ImportSegment | null>(null);
@@ -104,6 +105,19 @@ export function ImportReviewModal({ batchId, onClose }: Props) {
                       title="Assistir"
                     >
                       <Play className="h-3 w-3 fill-white" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Descartar o corte "${seg.name ?? `Parte ${seg.index}`}"? Não dá pra desfazer.`)) {
+                          deleteSegment.mutate(seg.index);
+                        }
+                      }}
+                      disabled={deleteSegment.isPending}
+                      className="absolute bottom-2 left-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-red-600/80 disabled:opacity-50"
+                      title="Descartar este corte"
+                    >
+                      <Trash2 className="h-3 w-3" />
                     </button>
                     <input
                       value={names[seg.index] ?? seg.name ?? `Parte ${seg.index}`}

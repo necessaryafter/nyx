@@ -581,7 +581,10 @@ export function AssetsPage() {
         <div className="flex items-center gap-3 rounded-xl border border-nyx-border bg-nyx-surface p-3">
           <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-nyx-border border-t-nyx-cyan-500" />
           <p className="text-sm text-nyx-text-secondary">
-            Analisando cortes de <strong className="text-nyx-text-primary">{detectingBatch.sourceName}</strong>...
+            Processando <strong className="text-nyx-text-primary">{detectingBatch.sourceName}</strong>...{" "}
+            {partialBatch?.id === detectingBatch.id
+              ? "novos cortes prontos aparecem aqui assim que terminam."
+              : "detectando/cortando — pode levar alguns minutos em vídeos longos."}
           </p>
           {partialBatch?.id === detectingBatch.id && (
             <button

@@ -206,6 +206,35 @@ describe("POST /api/asset-imports/:id/confirm", () => {
   });
 });
 
+describe("DELETE /api/asset-imports/:id/segments/:index", () => {
+  it("returns 404 when the batch doesn't exist", async () => {
+    mockDatabase.select.mockReturnValueOnce(chainResult([]));
+    const res = await app.handle(authedRequest(`/api/asset-imports/${BATCH_ID}/segments/1`, { method: "DELETE" }));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the index doesn't exist in the batch", async () => {
+    mockDatabase.select.mockReturnValueOnce(chainResult([BATCH_ROW]));
+    const res = await app.handle(authedRequest(`/api/asset-imports/${BATCH_ID}/segments/99`, { method: "DELETE" }));
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when the batch is already done", async () => {
+    mockDatabase.select.mockReturnValueOnce(chainResult([{ ...BATCH_ROW, status: "done" }]));
+    const res = await app.handle(authedRequest(`/api/asset-imports/${BATCH_ID}/segments/1`, { method: "DELETE" }));
+    expect(res.status).toBe(409);
+  });
+
+  it("removes a single segment while the batch keeps processing", async () => {
+    mockDatabase.select.mockReturnValueOnce(chainResult([{ ...BATCH_ROW, status: "detecting" }]));
+    const res = await app.handle(authedRequest(`/api/asset-imports/${BATCH_ID}/segments/2`, { method: "DELETE" }));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(mockDatabase.update).toHaveBeenCalled();
+  });
+});
+
 describe("DELETE /api/asset-imports/:id", () => {
   it("returns 404 when not found", async () => {
     mockDatabase.select.mockReturnValueOnce(chainResult([]));

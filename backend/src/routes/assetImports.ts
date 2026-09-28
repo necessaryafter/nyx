@@ -25,6 +25,23 @@ async function removeBatchObjects(batch: { sourceStorageKey: string; segments: I
   );
 }
 
+// Remove índices da lista de forma atômica (SET via subquery lendo o valor atual da coluna) —
+// não pisa num append concorrente do worker. Usado pela confirmação parcial e pelo delete de 1 corte.
+// drizzle expande array em params separados (vira tupla, não array do postgres) — os índices já
+// são inteiros validados antes de chegar aqui, seguro montar o ARRAY[...] direto.
+async function spliceSegments(batchId: string, indexes: number[]) {
+  await database
+    .update(assetImportBatches)
+    .set({
+      segments: sql`(
+        select coalesce(jsonb_agg(elem), '[]'::jsonb)
+        from jsonb_array_elements(${assetImportBatches.segments}) elem
+        where not ((elem->>'index')::int = any(array[${sql.raw(indexes.join(","))}]))
+      )`,
+    })
+    .where(eq(assetImportBatches.id, batchId));
+}
+
 // ponytail: lazy cleanup — sem scheduler dedicado, só varre quando alguém começa um novo upload.
 async function cleanupAbandonedBatches(userId: string) {
   const cutoff = new Date(Date.now() - ABANDONED_BATCH_DAYS * 24 * 60 * 60 * 1000);
@@ -239,21 +256,9 @@ export const assetImportRoutes = new Elysia({ prefix: "/api/asset-imports" })
     const stillProcessing = batch.status === "detecting";
 
     if (stillProcessing) {
-      // Confirmação parcial: só tira os confirmados da lista, de forma atômica (o worker pode
-      // estar adicionando outro corte nesse exato momento — um "lê tudo e regrava" perderia
-      // esse update). Os não selecionados ficam guardados pra decidir numa próxima chamada.
-      // drizzle expande array em params separados (vira tupla, não array do postgres) —
-      // os índices já passaram pelo Zod como inteiros, seguro montar o ARRAY[...] direto.
-      await database
-        .update(assetImportBatches)
-        .set({
-          segments: sql`(
-            select coalesce(jsonb_agg(elem), '[]'::jsonb)
-            from jsonb_array_elements(${assetImportBatches.segments}) elem
-            where not ((elem->>'index')::int = any(array[${sql.raw([...selected].join(","))}]))
-          )`,
-        })
-        .where(eq(assetImportBatches.id, batch.id));
+      // Confirmação parcial: só tira os confirmados da lista. Os não selecionados ficam
+      // guardados pra decidir numa próxima chamada (ou apagar via DELETE .../segments/:index).
+      await spliceSegments(batch.id, [...selected]);
     } else {
       // Não vem mais nada (awaiting_review ou failed) — decide os não selecionados agora.
       const toDrop = batch.segments.filter((s) => !selected.has(s.index));
@@ -271,6 +276,43 @@ export const assetImportRoutes = new Elysia({ prefix: "/api/asset-imports" })
     }
 
     return { status: stillProcessing ? "detecting" : "done", imported: toKeep.length };
+  })
+
+  // Descarta 1 corte específico (não o lote inteiro) — útil pra tirar um pedaço ruim da
+  // revisão sem esperar o resto terminar nem mexer nos outros já prontos.
+  .delete("/:id/segments/:index", async ({ params, session, set }) => {
+    const index = Number(params.index);
+    if (!Number.isInteger(index)) {
+      set.status = 400;
+      return { error: "invalid index" };
+    }
+
+    const [batch] = await database
+      .select()
+      .from(assetImportBatches)
+      .where(and(eq(assetImportBatches.id, params.id), eq(assetImportBatches.userId, session.user.id)))
+      .limit(1);
+
+    if (!batch) {
+      set.status = 404;
+      return { error: "import batch not found" };
+    }
+    if (batch.status === "done" || batch.status === "discarded") {
+      set.status = 409;
+      return { error: `lote está em '${batch.status}', não é mais possível remover cortes` };
+    }
+
+    const segment = batch.segments.find((s) => s.index === index);
+    if (!segment) {
+      set.status = 404;
+      return { error: "segment not found" };
+    }
+
+    await minio.removeObject(BUCKET_ASSETS, segment.clipStorageKey).catch(() => {});
+    await minio.removeObject(BUCKET_ASSETS, segment.thumbnailKey).catch(() => {});
+    await spliceSegments(batch.id, [index]);
+
+    return { deleted: true };
   })
 
   .delete("/:id", async ({ params, session, set }) => {

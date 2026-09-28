@@ -105,6 +105,14 @@ export function useConfirmImport(batchId: string) {
   });
 }
 
+export function useDeleteSegment(batchId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (index: number) => api.delete<{ deleted: boolean }>(`/api/asset-imports/${batchId}/segments/${index}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["asset-imports"] }),
+  });
+}
+
 export function useFallbackChoice(batchId: string) {
   const qc = useQueryClient();
   return useMutation({
