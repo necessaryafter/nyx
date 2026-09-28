@@ -154,6 +154,7 @@ export const assetImportRoutes = new Elysia({ prefix: "/api/asset-imports" })
       batch.segments.map(async (s) => ({
         ...s,
         thumbnailUrl: await presignClient.presignedGetObject(BUCKET_ASSETS, s.thumbnailKey, 3600),
+        clipUrl: await presignClient.presignedGetObject(BUCKET_ASSETS, s.clipStorageKey, 3600),
       })),
     );
 

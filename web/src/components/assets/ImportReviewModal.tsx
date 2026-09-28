@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, Play } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { cn } from "../../lib/cn";
 import { useImportBatch, useConfirmImport, useDiscardImport } from "../../hooks/useAssetImports";
+import { VideoPreviewModal } from "./VideoPreviewModal";
+import type { ImportSegment } from "../../lib/types";
 
 interface Props {
   batchId: string;
@@ -20,6 +22,7 @@ export function ImportReviewModal({ batchId, onClose }: Props) {
   const discardImport = useDiscardImport();
   const [selected, setSelected] = useState<Set<number> | null>(null);
   const [names, setNames] = useState<Record<number, string>>({});
+  const [previewSeg, setPreviewSeg] = useState<ImportSegment | null>(null);
 
   const segments = batch?.segments ?? [];
   const activeSelected = selected ?? new Set(segments.filter((s) => s.selected).map((s) => s.index));
@@ -74,7 +77,7 @@ export function ImportReviewModal({ batchId, onClose }: Props) {
                   <div
                     key={seg.index}
                     className={cn(
-                      "overflow-hidden rounded-xl border bg-nyx-surface transition-colors",
+                      "relative overflow-hidden rounded-xl border bg-nyx-surface transition-colors",
                       isSelected ? "border-nyx-cyan-500" : "border-nyx-border opacity-60",
                     )}
                   >
@@ -91,6 +94,16 @@ export function ImportReviewModal({ batchId, onClose }: Props) {
                       <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
                         {formatDuration(seg.endMs - seg.startMs)}
                       </span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreviewSeg(seg);
+                      }}
+                      className="absolute left-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+                      title="Assistir"
+                    >
+                      <Play className="h-3 w-3 fill-white" />
                     </button>
                     <input
                       value={names[seg.index] ?? seg.name ?? `Parte ${seg.index}`}
@@ -123,6 +136,14 @@ export function ImportReviewModal({ batchId, onClose }: Props) {
           </Button>
         </div>
       </div>
+
+      {previewSeg && (
+        <VideoPreviewModal
+          url={previewSeg.clipUrl}
+          name={previewSeg.name ?? `Parte ${previewSeg.index}`}
+          onClose={() => setPreviewSeg(null)}
+        />
+      )}
     </div>
   );
 }

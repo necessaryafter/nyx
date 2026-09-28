@@ -150,6 +150,7 @@ export interface ImportSegment {
   startMs: number;
   endMs: number;
   thumbnailUrl: string;
+  clipUrl: string;
   selected: boolean;
   name?: string;
 }

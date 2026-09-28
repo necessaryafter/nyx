@@ -12,6 +12,7 @@ import {
   Pencil,
   Check,
   X,
+  Play,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -22,6 +23,7 @@ import {
   useDeleteAsset,
   useRenameAsset,
   useUploadAsset,
+  useAssetUrl,
 } from "../hooks/useAssets";
 import { usePendingImports, useAssetImportsWebSocket } from "../hooks/useAssetImports";
 import { UploadProgress, type UploadEntry } from "../components/assets/UploadProgress";
@@ -29,6 +31,7 @@ import { ImportButton } from "../components/assets/ImportButton";
 import { AssetGroupCard } from "../components/assets/AssetGroupCard";
 import { FallbackChoiceModal } from "../components/assets/FallbackChoiceModal";
 import { ImportReviewModal } from "../components/assets/ImportReviewModal";
+import { VideoPreviewModal } from "../components/assets/VideoPreviewModal";
 import type { Asset } from "../lib/types";
 
 type TypeFilter = "all" | "video" | "audio" | "text";
@@ -68,12 +71,18 @@ function timeAgo(dateStr: string) {
   return `há ${d} dia${d > 1 ? "s" : ""}`;
 }
 
-function AssetThumbnail({ asset }: { asset: Asset }) {
+function AssetThumbnail({ asset, onPlay }: { asset: Asset; onPlay?: () => void }) {
   if (asset.type === "video") {
     return (
-      <div className="flex h-full items-center justify-center bg-nyx-deep">
-        <Film className="h-10 w-10 text-nyx-cyan-500 opacity-60" />
-      </div>
+      <button
+        onClick={onPlay}
+        className="group/play flex h-full w-full items-center justify-center bg-nyx-deep"
+      >
+        <Film className="h-10 w-10 text-nyx-cyan-500 opacity-60 transition-opacity group-hover/play:opacity-0" />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover/play:bg-black/50 group-hover/play:opacity-100">
+          <Play className="h-8 w-8 fill-white text-white" />
+        </span>
+      </button>
     );
   }
   if (asset.type === "audio") {
@@ -196,6 +205,8 @@ export function AssetCard({
   const deleteAsset = useDeleteAsset();
   const renameAsset = useRenameAsset();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [watching, setWatching] = useState(false);
+  const assetUrl = useAssetUrl(asset.id, watching);
 
   return (
     <motion.div
@@ -205,9 +216,13 @@ export function AssetCard({
       className="group overflow-hidden rounded-xl border border-nyx-border bg-nyx-surface transition-all duration-150 hover:border-nyx-hover hover:shadow-lg"
     >
       {/* Thumbnail */}
-      <div className="aspect-square w-full overflow-hidden">
-        <AssetThumbnail asset={asset} />
+      <div className="relative aspect-square w-full overflow-hidden">
+        <AssetThumbnail asset={asset} onPlay={() => setWatching(true)} />
       </div>
+
+      {watching && (
+        <VideoPreviewModal url={assetUrl.data?.url} name={asset.name} onClose={() => setWatching(false)} />
+      )}
 
       {/* Info */}
       <div className="p-3">

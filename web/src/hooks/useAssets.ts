@@ -41,6 +41,15 @@ export function useAssetCounts() {
   });
 }
 
+export function useAssetUrl(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["assets", "url", id],
+    queryFn: () => api.get<{ url: string }>(`/api/assets/${id}/url`),
+    enabled,
+    staleTime: 50 * 60 * 1000, // a URL presignada no backend dura 1h
+  });
+}
+
 export function useDeleteAsset() {
   const qc = useQueryClient();
   return useMutation({
