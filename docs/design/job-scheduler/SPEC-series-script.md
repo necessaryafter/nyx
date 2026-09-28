@@ -23,11 +23,12 @@ Se uma parte sair fora da tolerância: **uma** nova chamada só para aquela part
 
 ### Montagem do texto final de cada parte
 ```
-parte 1:          "{title} {body} {cta(1)}"          // title termina em . ! ou ? (garantir)
-parte n (2..N-1): "Parte {n}. {body} {cta(n)}"
-parte N (final):  "{body} {finalCta}"                 // finalCta opcional; vazio = nada
-N = 1 (vídeo único): "{title} {body} {finalCta}"      // sem CTA intermediário
+parte 1:              "{title} {body} {cta(1)}"        // title termina em . ! ou ? (garantir); sem cta se N=1
+parte n (2..N-1):     "Parte {n}. {body} {cta(n)}"
+parte N (final, N>1): "Parte {N}. {body} {finalCta?}"  // todas as partes 2+ falam "Parte N.", inclusive a última
+N = 1 (vídeo único):  "{title} {body} {finalCta?}"     // sem CTA intermediário
 ```
+(`{finalCta?}` = opcional; ausente = nada, sem espaço sobrando.)
 `cta(n)` = `ctaTemplate` com `{n}` → n, `{next}` → n+1, `{total}` → N. Default: `"Curta e comente para a parte {next}."`. Garantir ponto final.
 
 Por que a abertura e o CTA são montados por código e não pela IA: o número da parte é responsabilidade do sistema (o usuário pediu isso explicitamente), e a primeira frase da parte 1 vira o card de título do renderer — precisa ser exatamente o `title`.
