@@ -11,8 +11,9 @@ import {
 } from "lucide-react";
 import { useStartAudio, useJob } from "../../hooks/useJobs";
 import { useAssets } from "../../hooks/useAssets";
+import { useAiModels } from "../../hooks/useAiModels";
 import { Button } from "../../components/ui/Button";
-import { api } from "../../lib/api";
+import { api, ApiError } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import type { JobStatus } from "../../lib/types";
 
@@ -25,12 +26,12 @@ interface Message {
   isError?: boolean;
 }
 
-// Modelos antigos (2.0-flash, 1.5-pro) foram descontinuados pelo Google — a API já nem aceita mais.
-const AI_MODELS = [
+// Fallback só até a lista da API carregar (ou se vier 503 sem chave configurada) —
+// nomes fixos já quebraram uma vez quando o Google descontinuou modelos antigos,
+// por isso a fonte de verdade é /api/ai/models (useAiModels).
+const FALLBACK_MODELS = [
   { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite (rápido)" },
-  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (mais recente)" },
-  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (mais caprichado)" },
-] as const;
+];
 
 const INITIAL_MESSAGE: Message = {
   role: "model",
@@ -119,7 +120,16 @@ export function Step2_Narration({
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState("");
   const [isAILoading, setIsAILoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>(AI_MODELS[0].id);
+  const { data: fetchedModels } = useAiModels();
+  const AI_MODELS = fetchedModels && fetchedModels.length > 0 ? fetchedModels : FALLBACK_MODELS;
+  const [selectedModel, setSelectedModel] = useState<string>(FALLBACK_MODELS[0].id);
+
+  // Troca pro primeiro modelo real assim que a lista da API chega.
+  useEffect(() => {
+    if (fetchedModels && fetchedModels.length > 0 && !fetchedModels.some((m) => m.id === selectedModel)) {
+      setSelectedModel(fetchedModels[0].id);
+    }
+  }, [fetchedModels]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -183,12 +193,13 @@ export function Step2_Narration({
 
       const extracted = extractScript(aiText);
       if (extracted) setScript(extracted);
-    } catch {
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { error?: string } | null) : null;
       setMessages((prev) => [
         ...prev,
         {
           role: "model",
-          text: "Erro ao conectar com a IA. Verifique se GOOGLE_AI_STUDIO_KEY está configurada.",
+          text: body?.error ?? "Erro ao conectar com a IA.",
           isError: true,
         },
       ]);

@@ -14,6 +14,7 @@ import {
   Plug,
   KeyRound,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { cn } from "../lib/cn";
@@ -453,8 +454,11 @@ function IntegrationsTab() {
   const remove = useDeleteIntegration();
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [geminiKey, setGeminiKey] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
 
   const talkify = integrations?.find((i) => i.provider === "talkify");
+  const gemini = integrations?.find((i) => i.provider === "gemini");
 
   const handleConnect = async () => {
     await upsert.mutateAsync({ provider: "talkify", apiKey });
@@ -462,6 +466,13 @@ function IntegrationsTab() {
   };
 
   const handleRemove = () => remove.mutate("talkify");
+
+  const handleConnectGemini = async () => {
+    await upsert.mutateAsync({ provider: "gemini", apiKey: geminiKey });
+    setGeminiKey("");
+  };
+
+  const handleRemoveGemini = () => remove.mutate("gemini");
 
   return (
     <div className="space-y-4">
@@ -568,6 +579,124 @@ function IntegrationsTab() {
                 size="sm"
                 onClick={handleConnect}
                 disabled={!apiKey.trim() || upsert.isPending}
+              >
+                {upsert.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Conectar
+              </Button>
+            </div>
+            {upsert.isError && (
+              <p className="text-xs text-red-400">
+                Erro ao salvar. Verifique sua API Key.
+              </p>
+            )}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Gemini card */}
+      <motion.div
+        {...fade(0.1)}
+        className="rounded-xl border border-nyx-border bg-nyx-surface p-4 space-y-3"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-nyx-elevated">
+            <Sparkles className="h-4 w-4 text-nyx-cyan-500" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-nyx-text-primary">Gemini</p>
+            <p className="text-xs text-nyx-text-muted">Geração de roteiro por IA</p>
+          </div>
+          {gemini && (
+            <span className="ml-auto rounded-full bg-nyx-cyan-500/10 px-2 py-0.5 text-[10px] font-medium text-nyx-cyan-500">
+              Conectado
+            </span>
+          )}
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-xs text-nyx-text-muted">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Carregando...
+          </div>
+        ) : gemini ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 rounded-lg bg-nyx-void/50 px-3 py-2">
+              <span className="font-mono text-xs text-nyx-text-secondary">{gemini.maskedKey}</span>
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showGeminiKey ? "text" : "password"}
+                  placeholder="Nova API Key (para atualizar)"
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  className="w-full rounded-lg border border-nyx-border bg-nyx-void px-3 py-2 pr-9 text-xs text-nyx-text-primary placeholder:text-nyx-text-muted focus:border-nyx-cyan-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowGeminiKey((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-nyx-text-muted hover:text-nyx-text-primary"
+                >
+                  {showGeminiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleConnectGemini}
+                disabled={!geminiKey.trim() || upsert.isPending}
+              >
+                {upsert.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Atualizar
+              </Button>
+            </div>
+            <button
+              onClick={handleRemoveGemini}
+              disabled={remove.isPending}
+              className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+            >
+              {remove.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
+              Remover integração
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-nyx-text-muted leading-relaxed">
+              Gere uma chave gratuita em{" "}
+              <a
+                href="https://aistudio.google.com/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-nyx-cyan-500"
+              >
+                aistudio.google.com/apikey
+              </a>
+              .
+            </p>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={showGeminiKey ? "text" : "password"}
+                  placeholder="Cole sua API Key aqui"
+                  value={geminiKey}
+                  onChange={(e) => setGeminiKey(e.target.value)}
+                  className="w-full rounded-lg border border-nyx-border bg-nyx-void px-3 py-2 pr-9 text-xs text-nyx-text-primary placeholder:text-nyx-text-muted focus:border-nyx-cyan-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowGeminiKey((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-nyx-text-muted hover:text-nyx-text-primary"
+                >
+                  {showGeminiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              <Button
+                size="sm"
+                onClick={handleConnectGemini}
+                disabled={!geminiKey.trim() || upsert.isPending}
               >
                 {upsert.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 Conectar
