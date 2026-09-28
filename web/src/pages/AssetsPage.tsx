@@ -213,10 +213,13 @@ export function AssetCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3, delay: index * 0.04, ease: [0.16, 1, 0.3, 1] }}
-      className="group overflow-hidden rounded-xl border border-nyx-border bg-nyx-surface transition-all duration-150 hover:border-nyx-hover hover:shadow-lg"
+      className="group relative rounded-xl border border-nyx-border bg-nyx-surface transition-all duration-150 hover:border-nyx-hover hover:shadow-lg"
     >
-      {/* Thumbnail */}
-      <div className="relative aspect-square w-full overflow-hidden">
+      {/* Thumbnail — overflow-hidden só aqui (não no card inteiro), senão corta o
+          dropdown do menu "..." que abre pra baixo (Renomear aparecia, Deletar não).
+          "relative" aqui (não só no wrapper externo) pro overlay de confirmar exclusão
+          funcionar também dentro de AssetGroupCard, que não tem esse wrapper. */}
+      <div className="relative aspect-square w-full overflow-hidden rounded-t-xl">
         <AssetThumbnail asset={asset} onPlay={() => setWatching(true)} />
       </div>
 

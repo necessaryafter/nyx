@@ -30,20 +30,20 @@ export function AssetGroupCard({ assets }: { assets: Asset[] }) {
         <ChevronDown className={`h-4 w-4 shrink-0 text-nyx-text-muted transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
+      {/* Sem overflow-hidden/height-animation aqui: cortaria o dropdown do "..." de
+          cada AssetCard (renomear/deletar) sempre que abrisse perto da borda do grupo. */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
           >
-            <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {assets.map((asset, i) => (
-                <AssetCard key={asset.id} asset={asset} index={i} />
-              ))}
-            </div>
+            {assets.map((asset, i) => (
+              <AssetCard key={asset.id} asset={asset} index={i} />
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
