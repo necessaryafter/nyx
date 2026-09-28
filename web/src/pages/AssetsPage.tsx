@@ -23,6 +23,12 @@ import {
   useRenameAsset,
   useUploadAsset,
 } from "../hooks/useAssets";
+import { usePendingImports, useAssetImportsWebSocket } from "../hooks/useAssetImports";
+import { UploadProgress, type UploadEntry } from "../components/assets/UploadProgress";
+import { ImportButton } from "../components/assets/ImportButton";
+import { AssetGroupCard } from "../components/assets/AssetGroupCard";
+import { FallbackChoiceModal } from "../components/assets/FallbackChoiceModal";
+import { ImportReviewModal } from "../components/assets/ImportReviewModal";
 import type { Asset } from "../lib/types";
 
 type TypeFilter = "all" | "video" | "audio" | "text";
@@ -180,7 +186,7 @@ function AssetCardMenu({
   );
 }
 
-function AssetCard({
+export function AssetCard({
   asset,
   index,
 }: {
@@ -328,50 +334,24 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
   );
 }
 
-type UploadEntry = { file: string; done: boolean; error?: string; progress: number };
+type GridItem = { kind: "asset"; asset: Asset } | { kind: "group"; batchId: string; assets: Asset[] };
 
-function UploadProgress({ uploads }: { uploads: UploadEntry[] }) {
-  if (uploads.length === 0) return null;
-  return (
-    <div className="space-y-1">
-      {uploads.map((u, i) => (
-        <div
-          key={i}
-          className="rounded-lg border border-nyx-border bg-nyx-surface px-3 py-2 text-xs"
-        >
-          <div className="flex items-center gap-2">
-            {u.done ? (
-              <Check className="h-3.5 w-3.5 shrink-0 text-green-400" />
-            ) : u.error ? (
-              <X className="h-3.5 w-3.5 shrink-0 text-red-400" />
-            ) : (
-              <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-nyx-border border-t-nyx-cyan-500" />
-            )}
-            <span className="min-w-0 flex-1 truncate text-nyx-text-secondary">{u.file}</span>
-            {!u.done && !u.error && (
-              <span className="shrink-0 tabular-nums text-nyx-text-muted">
-                {u.progress === -1 ? "Processando..." : `${u.progress}%`}
-              </span>
-            )}
-            {u.error && (
-              <span className="ml-auto shrink-0 text-red-400">{u.error}</span>
-            )}
-          </div>
-          {!u.done && !u.error && (
-            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-nyx-border">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all duration-150",
-                  u.progress === -1 ? "w-full animate-pulse bg-nyx-cyan-500/50" : "bg-nyx-cyan-500",
-                )}
-                style={u.progress !== -1 ? { width: `${u.progress}%` } : undefined}
-              />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
+// Agrupa assets consecutivos do mesmo lote de import — se a paginação cortar
+// um lote ao meio, cada página trata o pedaço que recebeu como grupo à parte
+// (limitação de v1, aceita pela spec).
+function groupAssets(list: Asset[]): GridItem[] {
+  const items: GridItem[] = [];
+  for (const asset of list) {
+    const last = items[items.length - 1];
+    if (asset.importBatchId && last?.kind === "group" && last.batchId === asset.importBatchId) {
+      last.assets.push(asset);
+    } else if (asset.importBatchId) {
+      items.push({ kind: "group", batchId: asset.importBatchId, assets: [asset] });
+    } else {
+      items.push({ kind: "asset", asset });
+    }
+  }
+  return items;
 }
 
 const TYPE_TABS: { label: string; value: TypeFilter }[] = [
@@ -400,6 +380,12 @@ export function AssetsPage() {
     typeFilter === "all" ? undefined : typeFilter,
     debouncedSearch || undefined,
   );
+
+  useAssetImportsWebSocket();
+  const pendingImports = usePendingImports().data?.data ?? [];
+  const detectingBatch = pendingImports.find((b) => b.status === "detecting");
+  const fallbackBatch = pendingImports.find((b) => b.status === "awaiting_fallback_choice");
+  const reviewBatch = pendingImports.find((b) => b.status === "awaiting_review");
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -472,6 +458,9 @@ export function AssetsPage() {
 
   return (
     <div className="space-y-6">
+      {fallbackBatch && <FallbackChoiceModal batchId={fallbackBatch.id} sourceName={fallbackBatch.sourceName} />}
+      {reviewBatch && <ImportReviewModal batchId={reviewBatch.id} />}
+
       {/* Header */}
       <motion.div
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
@@ -511,6 +500,8 @@ export function AssetsPage() {
               Upload
             </span>
           </label>
+
+          <ImportButton />
         </div>
       </motion.div>
 
@@ -555,6 +546,16 @@ export function AssetsPage() {
 
       {/* Upload progress */}
       <UploadProgress uploads={uploads} />
+
+      {/* Lote em análise — não trava o resto da grid */}
+      {detectingBatch && (
+        <div className="flex items-center gap-3 rounded-xl border border-nyx-border bg-nyx-surface p-3">
+          <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-nyx-border border-t-nyx-cyan-500" />
+          <p className="text-sm text-nyx-text-secondary">
+            Analisando cortes de <strong className="text-nyx-text-primary">{detectingBatch.sourceName}</strong>...
+          </p>
+        </div>
+      )}
 
       {/* Grid / Empty / Skeleton */}
       {assets.isPending ? (
@@ -607,11 +608,15 @@ export function AssetsPage() {
         <>
           {/* Drop overlay when has data */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {assets.data!.data.map((asset, i) => (
-              <div key={asset.id} className="relative">
-                <AssetCard asset={asset} index={i} />
-              </div>
-            ))}
+            {groupAssets(assets.data!.data).map((item, i) =>
+              item.kind === "group" ? (
+                <AssetGroupCard key={item.batchId} assets={item.assets} />
+              ) : (
+                <div key={item.asset.id} className="relative">
+                  <AssetCard asset={item.asset} index={i} />
+                </div>
+              ),
+            )}
           </div>
 
           {/* Pagination */}

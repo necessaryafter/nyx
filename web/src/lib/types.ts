@@ -136,7 +136,30 @@ export interface Asset {
   name: string;
   type: "video" | "audio" | "text" | "image";
   sizeBytes: number | null;
+  importBatchId: string | null;
   createdAt: string;
+}
+
+// ── asset-import ──
+
+export type ImportBatchStatus =
+  | "detecting" | "awaiting_fallback_choice" | "awaiting_review" | "done" | "discarded" | "failed";
+
+export interface ImportSegment {
+  index: number;
+  startMs: number;
+  endMs: number;
+  thumbnailUrl: string;
+  selected: boolean;
+  name?: string;
+}
+
+export interface ImportBatch {
+  id: string;
+  sourceName: string;
+  status: ImportBatchStatus;
+  segments: ImportSegment[];
+  error: string | null;
 }
 
 export interface PaginatedResponse<T> {
