@@ -24,5 +24,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // *.test.ts roda via `bun test` direto (tipos de bun:test), fora do build do Vite.
+  "exclude": ["src/**/*.test.ts"]
 }

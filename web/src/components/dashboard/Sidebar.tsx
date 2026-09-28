@@ -5,6 +5,7 @@ import {
   LayoutTemplate,
   FolderOpen,
   Film,
+  CalendarClock,
   Coins,
   Store,
   Settings,
@@ -21,6 +22,7 @@ const NAV_SECTIONS = [
       { label: "Templates", href: "/templates", icon: LayoutTemplate },
       { label: "Assets", href: "/assets", icon: FolderOpen },
       { label: "Jobs", href: "/jobs", icon: Film },
+      { label: "Schedulers", href: "/schedulers", icon: CalendarClock },
     ],
   },
   {

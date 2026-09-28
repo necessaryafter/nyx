@@ -19,6 +19,14 @@ export function useTemplates(page: number, search?: string) {
   });
 }
 
+export function useTemplate(id: string) {
+  return useQuery({
+    queryKey: ["templates", "detail", id],
+    queryFn: () => api.get<TemplateWithGraph>(`/api/templates/${id}`),
+    enabled: !!id,
+  });
+}
+
 export function useDeleteTemplate() {
   const qc = useQueryClient();
   return useMutation({

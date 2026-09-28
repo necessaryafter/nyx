@@ -122,14 +122,11 @@ export function Step2_Narration({
   const [isAILoading, setIsAILoading] = useState(false);
   const { data: fetchedModels } = useAiModels();
   const AI_MODELS = fetchedModels && fetchedModels.length > 0 ? fetchedModels : FALLBACK_MODELS;
-  const [selectedModel, setSelectedModel] = useState<string>(FALLBACK_MODELS[0].id);
-
-  // Troca pro primeiro modelo real assim que a lista da API chega.
-  useEffect(() => {
-    if (fetchedModels && fetchedModels.length > 0 && !fetchedModels.some((m) => m.id === selectedModel)) {
-      setSelectedModel(fetchedModels[0].id);
-    }
-  }, [fetchedModels]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Estado só guarda uma escolha explícita do usuário; sem uma, cai no primeiro
+  // modelo da lista atual — deriva direto, sem efeito pra sincronizar estado.
+  const [modelOverride, setModelOverride] = useState<string | null>(null);
+  const selectedModel = modelOverride && AI_MODELS.some((m) => m.id === modelOverride) ? modelOverride : AI_MODELS[0]!.id;
+  const setSelectedModel = setModelOverride;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);

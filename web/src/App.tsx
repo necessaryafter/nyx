@@ -11,6 +11,9 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { TemplateEditorPage } from "./pages/TemplateEditorPage";
 import { RenderPage } from "./pages/RenderPage";
 import { JobWizardPage } from "./pages/JobWizardPage";
+import { SchedulersPage } from "./pages/SchedulersPage";
+import { SchedulerFormPage } from "./pages/SchedulerFormPage";
+import { SchedulerDetailPage } from "./pages/SchedulerDetailPage";
 
 export default function App() {
   return (
@@ -25,6 +28,8 @@ export default function App() {
       <Route path="/render/:templateId" element={<RenderPage />} />
       <Route path="/jobs/new" element={<JobWizardPage />} />
       <Route path="/jobs/:id/edit" element={<JobWizardPage />} />
+      <Route path="/schedulers/new" element={<SchedulerFormPage />} />
+      <Route path="/schedulers/:id/edit" element={<SchedulerFormPage />} />
 
       {/* Protected routes under sidebar layout */}
       <Route element={<DashboardLayout />}>
@@ -32,6 +37,8 @@ export default function App() {
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/assets" element={<AssetsPage />} />
         <Route path="/jobs" element={<JobsPage />} />
+        <Route path="/schedulers" element={<SchedulersPage />} />
+        <Route path="/schedulers/:id" element={<SchedulerDetailPage />} />
         <Route path="/credits" element={<CreditsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

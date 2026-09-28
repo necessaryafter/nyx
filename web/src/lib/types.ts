@@ -47,6 +47,90 @@ export interface Template {
   updatedAt: string;
 }
 
+// ── job-scheduler ──
+
+export type SchedulerMode = "single" | "parts";
+export type SchedulerRunStatus = "pending" | "scripting" | "rendering" | "done" | "partial" | "failed";
+
+export interface Scheduler {
+  id: string;
+  name: string;
+  templateId: string;
+  templateName: string | null;
+  theme: string;
+  assetIds: string[];
+  musicAssetIds: string[];
+  mode: SchedulerMode;
+  totalMinutes: number | null;
+  partsCount: number | null;
+  minutesPerPart: number | null;
+  ctaTemplate: string;
+  finalCtaTemplate: string | null;
+  aiProvider: string;
+  aiModel: string;
+  cronPattern: string | null;
+  timezone: string;
+  enabled: boolean;
+  lastRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchedulerListItem extends Scheduler {
+  lastRun: { id: string; status: SchedulerRunStatus; partsDone: number; partsTotal: number; createdAt: string } | null;
+  nextRunAt: string | null;
+}
+
+export interface RunPart {
+  jobId: string;
+  partIndex: number | null;
+  status: JobStatus;
+  durationSeconds: number | null;
+  hasVideo: boolean;
+}
+
+export interface SchedulerRun {
+  id: string;
+  schedulerId: string;
+  status: SchedulerRunStatus;
+  triggeredBy: "manual" | "schedule";
+  title: string | null;
+  partsTotal: number;
+  partsDone: number;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  parts: RunPart[];
+}
+
+export interface SchedulerDetail extends Scheduler {
+  nextRunAt: string | null;
+  runs: SchedulerRun[];
+}
+
+export interface SeriesScriptPart {
+  index: number;
+  text: string;
+  body: string;
+  targetWords: number;
+  actualWords: number;
+  outOfBudget: boolean;
+}
+
+export interface SeriesScript {
+  title: string;
+  parts: SeriesScriptPart[];
+  model: string;
+}
+
+export interface SchedulerEstimate {
+  partsTotal: number;
+  minutesPerPart: number;
+  wordsPerPart: number;
+  creditsPerPart: number;
+  creditsTotal: number;
+}
+
 export interface Asset {
   id: string;
   name: string;
