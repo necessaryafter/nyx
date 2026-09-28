@@ -8,16 +8,19 @@ import { DashboardHeader } from "./DashboardHeader";
 import { BottomNav } from "./BottomNav";
 
 export function DashboardLayout() {
-  const { data: session, isPending } = authClient.useSession();
+  const { data: session, isPending, error } = authClient.useSession();
   const navigate = useNavigate();
   const { collapsed, toggle } = useSidebar();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Só manda pro login quando o backend confirma "sem sessão" — uma falha de
+  // rede/backend fora do ar (error preenchido) não pode ser lida como logout,
+  // senão qualquer soluço momentâneo derruba o usuário no meio do trabalho.
   useEffect(() => {
-    if (!session && !isPending) {
+    if (!session && !isPending && !error) {
       navigate("/login", { replace: true });
     }
-  }, [session, isPending, navigate]);
+  }, [session, isPending, error, navigate]);
 
   if (isPending) {
     return (
