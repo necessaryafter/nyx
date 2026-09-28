@@ -13,6 +13,9 @@ import { apiKeyRoutes } from "./routes/api-keys";
 import { wsRoutes } from "./routes/ws";
 import { aiRoutes } from "./routes/ai";
 import { imageRoutes } from "./routes/images";
+import { schedulerRoutes } from "./routes/schedulers";
+import { startSchedulerWorker } from "./workers/scheduler.worker";
+import { reconcileAllSchedulers } from "./lib/scheduler/sync";
 
 const app = new Elysia()
   .onError(({ error, request }) => {
@@ -49,6 +52,16 @@ const app = new Elysia()
   .use(wsRoutes)
   .use(aiRoutes)
   .use(imageRoutes)
+  .use(schedulerRoutes)
   .listen({ port: process.env.PORT ?? 3000, maxRequestBodySize: 4 * 1024 * 1024 * 1024, idleTimeout: 255 });
 
 logger.info(`API running at http://${app.server?.hostname}:${app.server?.port}`);
+
+// job-scheduler: worker roda no mesmo processo (uma máquina só, concorrência 1 é suficiente).
+// Desligável em produção multi-processo pra rodar num worker dedicado (SCHEDULER_WORKER=false).
+if (process.env.SCHEDULER_WORKER !== "false") {
+  startSchedulerWorker();
+  // Re-registra os schedulers habilitados no BullMQ — cobre o caso de Redis limpo
+  // (a fonte de verdade de "está agendado" é o Postgres, não o Redis).
+  reconcileAllSchedulers().catch((err) => logger.error({ err }, "failed to reconcile schedulers on boot"));
+}

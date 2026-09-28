@@ -149,6 +149,10 @@ const showTitleCardConfigSchema = z.object({
   flair: z.string().optional(),
   upvotes: z.string().optional(),
   comments: z.string().optional(),
+  // job-scheduler: quando presente, o card usa este texto em vez da primeira
+  // frase da narração (útil pra "Parte N." — muito curto pra virar título sozinho).
+  title: z.string().optional(),
+  minDurationMs: z.number().positive().optional(),
 });
 
 const renderConfigSchema = z.object({});
@@ -296,6 +300,51 @@ export const updateSlotsSchema = z.object({
   })).min(1),
 });
 
+
+// ── job-scheduler ──
+
+const schedulerBaseSchema = z.object({
+  name: z.string().min(1).max(80),
+  templateId: z.string().uuid(),
+  theme: z.string().min(10).max(2000),
+  assetIds: z.array(z.string().uuid()).default([]),
+  musicAssetIds: z.array(z.string().uuid()).default([]),
+  mode: z.enum(["single", "parts"]),
+  totalMinutes: z.number().min(0.5).max(10).optional(),
+  partsCount: z.number().int().min(2).max(10).optional(),
+  minutesPerPart: z.number().min(0.5).max(10).optional(),
+  ctaTemplate: z.string().min(1).max(200).default("Curta e comente para a parte {next}."),
+  finalCtaTemplate: z.string().max(200).optional(),
+  aiModel: z.string().min(1).max(80),
+  cronPattern: z.string().nullable().optional(),
+  timezone: z.string().min(1).default("America/Sao_Paulo"),
+  runOnCreate: z.boolean().optional(),
+});
+
+/** mode=single exige totalMinutes; mode=parts exige partsCount + minutesPerPart. */
+function checkModeFields(data: { mode: "single" | "parts"; totalMinutes?: number; partsCount?: number; minutesPerPart?: number }, ctx: z.RefinementCtx) {
+  if (data.mode === "single" && data.totalMinutes === undefined) {
+    ctx.addIssue({ code: "custom", path: ["totalMinutes"], message: "obrigatório quando mode = single" });
+  }
+  if (data.mode === "parts" && (data.partsCount === undefined || data.minutesPerPart === undefined)) {
+    ctx.addIssue({ code: "custom", path: ["partsCount"], message: "partsCount e minutesPerPart são obrigatórios quando mode = parts" });
+  }
+}
+
+export const createSchedulerSchema = schedulerBaseSchema.superRefine(checkModeFields);
+
+export const updateSchedulerSchema = schedulerBaseSchema.partial().extend({
+  enabled: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.mode) checkModeFields(data as Parameters<typeof checkModeFields>[0], ctx);
+});
+
+export const schedulerEstimateQuerySchema = z.object({
+  mode: z.enum(["single", "parts"]),
+  totalMinutes: z.coerce.number().min(0.5).max(10).optional(),
+  partsCount: z.coerce.number().int().min(2).max(10).optional(),
+  minutesPerPart: z.coerce.number().min(0.5).max(10).optional(),
+}).superRefine(checkModeFields);
 
 export const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),

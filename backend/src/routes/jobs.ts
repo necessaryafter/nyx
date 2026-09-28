@@ -1,41 +1,21 @@
 import { Elysia } from "elysia";
-import { eq, and, desc, count, sum } from "drizzle-orm";
+import { eq, and, desc, count } from "drizzle-orm";
 import { rateLimit } from "elysia-rate-limit";
 import { requireAuth } from "../auth/session";
 import { database } from "../database";
 import { jobs } from "../database/schema/jobs";
 import { templates } from "../database/schema/templates";
-import { assets } from "../database/schema/assets";
 import { creditTransactions } from "../database/schema/credits";
 import { storageClient as minio, presignClient, BUCKET_ASSETS, BUCKET_VIDEOS } from "@nyx/shared";
-import { renderQueue, audioQueue } from "../lib/queue";
+import { renderQueue } from "../lib/queue";
 import {
   createDraftJobSchema,
   startAudioSchema,
   updateSlotsSchema,
-  graphSchema,
-  validateGraphStructure,
   paginationSchema,
-  type GraphInput,
   type SceneSlot,
 } from "../lib/schemas";
-import { RENDER_CREDITS_PER_MIN, TTS_CREDITS_PER_MIN } from "../lib/credits";
-
-interface AudioJobData {
-  jobId: string;
-  narration:
-    | { type: "tts"; text: string; provider: "talkify" | "edge"; voice?: string; speed?: number }
-    | { type: "audio"; assetStorageKey: string };
-}
-
-/** Injeta o audioKey pré-computado no TTS node como provider=precomputed */
-function injectPrecomputedAudio(graph: GraphInput, audioKey: string): GraphInput {
-  const nodes = graph.nodes.map((node) => {
-    if (node.type !== "NarrationSource") return node;
-    return { ...node, config: { ...node.config, mode: "precomputed" as const, provider: "precomputed" as const, audioKey } };
-  });
-  return { ...graph, nodes };
-}
+import { HttpError, createDraftJob, loadOwnedTemplate, startAudio, startRender } from "../lib/jobs.service";
 
 const STAGED_STATUSES = new Set(["draft", "audio_processing", "audio_ready", "ready"]);
 
@@ -51,37 +31,15 @@ export const jobRoutes = new Elysia({ prefix: "/api/jobs" })
       return { error: "invalid fields", details: parsed.error.flatten() };
     }
 
-    const userId = session.user.id;
-
-    const [template] = await database
-      .select()
-      .from(templates)
-      .where(and(eq(templates.id, parsed.data.templateId), eq(templates.userId, userId)))
-      .limit(1);
-
-    if (!template) {
-      set.status = 404;
-      return { error: "template not found" };
+    try {
+      const template = await loadOwnedTemplate(session.user.id, parsed.data.templateId);
+      const job = await createDraftJob(session.user.id, template);
+      set.status = 201;
+      return job;
+    } catch (err) {
+      if (err instanceof HttpError) { set.status = err.status; return err.body; }
+      throw err;
     }
-
-    const graphParsed = graphSchema.safeParse(template.graph);
-    if (!graphParsed.success) {
-      set.status = 400;
-      return { error: "invalid graph in template", details: graphParsed.error.flatten() };
-    }
-
-    const [job] = await database
-      .insert(jobs)
-      .values({
-        userId,
-        templateId: template.id,
-        status: "draft",
-        graph: graphParsed.data,
-      })
-      .returning();
-
-    set.status = 201;
-    return job!;
   })
 
   // ── T-08: Enfileira geração de áudio (etapa 2) ──
@@ -105,70 +63,13 @@ export const jobRoutes = new Elysia({ prefix: "/api/jobs" })
       return { error: "job not found" };
     }
 
-    if (job.status !== "draft") {
-      set.status = 409;
-      return { error: "job must be in draft status", current: job.status };
+    try {
+      await startAudio(userId, job, parsed.data.narration);
+      return { status: "audio_processing" };
+    } catch (err) {
+      if (err instanceof HttpError) { set.status = err.status; return err.body; }
+      throw err;
     }
-
-    // Debita créditos de TTS se provider externo
-    const { narration } = parsed.data;
-    const isExternalTTS = narration.type === "tts";
-    const ttsCredits = isExternalTTS ? TTS_CREDITS_PER_MIN : 0;
-
-    if (ttsCredits > 0) {
-      const [balanceResult] = await database
-        .select({ total: sum(creditTransactions.amount) })
-        .from(creditTransactions)
-        .where(eq(creditTransactions.userId, userId));
-
-      const balance = Number(balanceResult?.total ?? 0);
-      if (balance < ttsCredits) {
-        set.status = 402;
-        return { error: "insufficient credits", required: ttsCredits, balance };
-      }
-
-      await database.insert(creditTransactions).values({
-        userId,
-        amount: -ttsCredits,
-        reason: "tts",
-        jobId: job.id,
-      });
-    }
-
-    // Atualiza status → audio_processing
-    await database
-      .update(jobs)
-      .set({ status: "audio_processing" })
-      .where(eq(jobs.id, job.id));
-
-    // Resolve storageKey do asset de áudio (se type=audio)
-    let audioJobNarration: AudioJobData["narration"];
-    if (narration.type === "audio") {
-      const [asset] = await database
-        .select({ storageKey: assets.storageKey })
-        .from(assets)
-        .where(and(eq(assets.id, narration.assetId), eq(assets.userId, userId)))
-        .limit(1);
-
-      if (!asset) {
-        set.status = 404;
-        return { error: "audio asset not found" };
-      }
-
-      audioJobNarration = { type: "audio", assetStorageKey: asset.storageKey };
-    } else {
-      audioJobNarration = {
-        type: "tts",
-        text: narration.text,
-        provider: narration.provider,
-        voice: narration.voice,
-        speed: narration.speed,
-      };
-    }
-
-    await audioQueue.add("audio", { jobId: job.id, narration: audioJobNarration });
-
-    return { status: "audio_processing" };
   })
 
   // ── T-10: Atualiza slots de mídia (etapa 3) ──
@@ -237,69 +138,13 @@ export const jobRoutes = new Elysia({ prefix: "/api/jobs" })
       return { error: "job not found" };
     }
 
-    const jobGraph = job.graph as GraphInput | null;
-    const hasSceneSource = jobGraph?.nodes?.some((n) => n.type === "SceneSource") ?? false;
-    const renderableStatuses = hasSceneSource ? ["ready"] : ["ready", "audio_ready"];
-
-    if (!renderableStatuses.includes(job.status)) {
-      set.status = 409;
-      return { error: "job must be in ready status", current: job.status };
-    }
-
-    // Injeta audioKey como provider precomputed no grafo
-    const graph = job.graph as GraphInput;
-    const resolvedGraph = job.audioKey
-      ? injectPrecomputedAudio(graph, job.audioKey)
-      : graph;
-
-    const structErrors = validateGraphStructure(resolvedGraph);
-    if (structErrors.length > 0) {
-      set.status = 400;
-      return { error: "invalid graph structure", details: structErrors };
-    }
-
-    const renderCredits = RENDER_CREDITS_PER_MIN;
-
-    // Verifica saldo + debita + atualiza grafo + enfileira — atomicamente
-    let creditsCharged: number;
     try {
-      creditsCharged = await database.transaction(async (tx) => {
-        const [balanceResult] = await tx
-          .select({ total: sum(creditTransactions.amount) })
-          .from(creditTransactions)
-          .where(eq(creditTransactions.userId, userId));
-
-        const balance = Number(balanceResult?.total ?? 0);
-        if (balance < renderCredits) {
-          throw { status: 402, balance };
-        }
-
-        await tx
-          .update(jobs)
-          .set({ status: "rendering", graph: resolvedGraph, creditsCharged: renderCredits })
-          .where(eq(jobs.id, job.id));
-
-        await tx.insert(creditTransactions).values({
-          userId,
-          amount: -renderCredits,
-          reason: "render",
-          jobId: job.id,
-        });
-
-        return renderCredits;
-      });
-    } catch (err: unknown) {
-      if (err && typeof err === "object" && "status" in err && (err as Record<string, unknown>).status === 402) {
-        set.status = 402;
-        const balance = (err as Record<string, unknown>).balance as number;
-        return { error: "insufficient credits", required: renderCredits, balance };
-      }
+      const { creditsCharged } = await startRender(userId, job);
+      return { status: "rendering", creditsCharged };
+    } catch (err) {
+      if (err instanceof HttpError) { set.status = err.status; return err.body; }
       throw err;
     }
-
-    await renderQueue.add("render", { jobId: job.id });
-
-    return { status: "rendering", creditsCharged };
   })
 
   // ── Reexecuta um job que falhou ──

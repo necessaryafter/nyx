@@ -8,7 +8,7 @@ export function chainResult(value: unknown = []) {
   const builder: Record<string, unknown> = {};
 
   const chainMethods = [
-    "select", "from", "where", "orderBy", "limit", "offset",
+    "select", "from", "where", "leftJoin", "orderBy", "limit", "offset",
     "insert", "values", "returning",
     "update", "set",
     "delete",

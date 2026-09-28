@@ -1,4 +1,4 @@
-import { Queue } from "bullmq";
+import { Queue, QueueEvents } from "bullmq";
 
 const connection = {
   url: process.env.REDIS_URL!,
@@ -19,3 +19,13 @@ export const audioQueue = new Queue("audio", {
     backoff: { type: "exponential", delay: 3000 },
   },
 });
+
+export const schedulerQueue = new Queue("scheduler", {
+  connection,
+  defaultJobOptions: { attempts: 1 }, // uma execução falha não deve re-rodar sozinha (duplicaria cobrança)
+});
+
+// Uma instância compartilhada por fila — usada tanto pelo broadcast do WS quanto
+// pelo worker do scheduler (que precisa de waitUntilFinished por parte).
+export const renderQueueEvents = new QueueEvents("render", { connection });
+export const audioQueueEvents = new QueueEvents("audio", { connection });

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "test:e2e": "bun run test/e2e.ts"
+    "test:e2e": "bun run test/e2e.ts",
+    "test:title-card": "bun run test/titleCard.selfcheck.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

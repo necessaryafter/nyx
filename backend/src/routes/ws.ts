@@ -1,16 +1,16 @@
 import { Elysia } from "elysia";
-import { QueueEvents } from "bullmq";
 import { eq } from "drizzle-orm";
 import { auth } from "../auth/auth";
 import { database } from "../database";
 import { jobs } from "../database/schema/jobs";
-import { renderQueue, audioQueue } from "../lib/queue";
+import { renderQueue, audioQueue, renderQueueEvents, audioQueueEvents } from "../lib/queue";
 import { logger } from "@nyx/shared";
 
 // Track connections by userId
 const connections = new Map<string, Set<{ send: (data: string) => void }>>();
 
-function broadcast(userId: string, message: object) {
+// Exportado pro worker do scheduler emitir "run:status" pelo mesmo canal por usuário.
+export function broadcast(userId: string, message: object) {
   const userConns = connections.get(userId);
   if (!userConns || userConns.size === 0) return;
   const raw = JSON.stringify(message);
@@ -24,10 +24,6 @@ function broadcast(userId: string, message: object) {
 }
 
 // ── Render queue events ──
-
-const renderQueueEvents = new QueueEvents("render", {
-  connection: { url: process.env.REDIS_URL! },
-});
 
 renderQueueEvents.on("completed", async ({ jobId: bullJobId }) => {
   await broadcastRenderUpdate(bullJobId);
@@ -67,10 +63,6 @@ async function broadcastRenderUpdate(bullJobId: string, progress?: number) {
 }
 
 // ── Audio queue events ──
-
-const audioQueueEvents = new QueueEvents("audio", {
-  connection: { url: process.env.REDIS_URL! },
-});
 
 audioQueueEvents.on("completed", async ({ jobId: bullJobId }) => {
   try {

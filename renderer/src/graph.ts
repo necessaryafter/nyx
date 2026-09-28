@@ -125,7 +125,7 @@ export interface SetSubtitleStyleConfig {
   style?: SubtitleStyle;
 }
 
-/** Card estilo post do Reddit; o título é sempre a primeira frase da narração. */
+/** Card estilo post do Reddit; por padrão o título é a primeira frase da narração. */
 export interface ShowTitleCardConfig {
   subreddit?: string;
   username?: string;
@@ -133,6 +133,11 @@ export interface ShowTitleCardConfig {
   flair?: string;
   upvotes?: string;
   comments?: string;
+  // job-scheduler: título explícito (ex.: "Título — Parte 2") em vez de extrair
+  // da narração — necessário porque a fala de uma parte começa com "Parte N.",
+  // curto demais pra virar título sozinho.
+  title?: string;
+  minDurationMs?: number; // default 1500; falas curtas ("Parte 2.") não dariam tempo de ler o card
 }
 
 export interface PlaySfxConfig {

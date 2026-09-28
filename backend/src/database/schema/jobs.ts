@@ -2,6 +2,7 @@ import { pgTable, pgEnum, uuid, text, integer, jsonb, timestamp, index } from "d
 import { relations } from "drizzle-orm";
 import { templates } from "./templates";
 import { creditTransactions } from "./credits";
+import { schedulerRuns } from "./schedulers";
 
 export const jobStatusEnum = pgEnum("job_status", [
   "draft",            // template selecionado, aguardando narração
@@ -25,18 +26,25 @@ export const jobs = pgTable("jobs", {
   durationSeconds: integer("duration_seconds"),
   creditsCharged: integer("credits_charged"),
   error: text("error"),
+  runId: uuid("run_id").references(() => schedulerRuns.id, { onDelete: "set null" }), // job-scheduler: nulo = job criado normalmente
+  partIndex: integer("part_index"), // 1-based; junto com runId identifica "parte N da série"
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().$onUpdate(() => new Date()),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (t) => [
   index("jobs_user_id_idx").on(t.userId),
   index("jobs_status_idx").on(t.status),
+  index("jobs_run_id_idx").on(t.runId),
 ]);
 
 export const jobsRelations = relations(jobs, ({ one, many }) => ({
   template: one(templates, {
     fields: [jobs.templateId],
     references: [templates.id],
+  }),
+  run: one(schedulerRuns, {
+    fields: [jobs.runId],
+    references: [schedulerRuns.id],
   }),
   creditTransactions: many(creditTransactions),
 }));
