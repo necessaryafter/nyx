@@ -9,7 +9,11 @@ export function run(args: string[]): Promise<void> {
     proc.on("close", (code) =>
       code === 0
         ? resolve()
-        : reject(new Error(`ffmpeg exited with code ${code}: ${Buffer.concat(stderr).toString()}`))
+        // ffmpeg sem -nostats solta uma linha de progresso a cada frame — sem cortar,
+        // um processo de vários minutos gera um erro de centenas de KB que já travou
+        // o worker de log (pino-pretty roda em worker_thread e caiu tentando escrever
+        // isso, derrubando o processo inteiro). Mesmo corte que scene-detection/detect.ts já usa.
+        : reject(new Error(`ffmpeg exited with code ${code}: ${Buffer.concat(stderr).toString().slice(-2000)}`))
     );
   });
 }

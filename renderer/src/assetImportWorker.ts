@@ -13,7 +13,9 @@ import { buildScaleFilter } from "./ffmpeg/builder";
 import { detectSegments, splitFixedInterval, type DetectedSegment } from "./scene-detection/detect";
 
 const DEFAULT_MAX_SEGMENTS = 30;
-const SEGMENT_CONCURRENCY = 3;
+// 2 cortes em paralelo (não 3): com -threads 4 cada, cabe em máquinas de 8-12 núcleos
+// sem competir com o resto dos serviços (backend, postgres, minio) rodando junto.
+const SEGMENT_CONCURRENCY = 2;
 
 export interface AssetImportJobData {
   batchId: string;
@@ -39,11 +41,14 @@ async function processSegment(
   const thumbPath = join(workDir, `segment-${segment.index}-thumb.jpg`);
 
   // Seek depois do -i (não antes) = frame-accurate no ponto exato do corte, mais lento mas correto.
+  // Qualidade mantida (mesmo preset/crf de sempre) — só limita threads pra não deixar o
+  // x264 auto-detectar mais threads do que a máquina aguenta com 3 cortes em paralelo
+  // (foi o que abortou num segmento de 23min: memória estourou com threads livres + lookahead).
   await run([
     "-y", "-i", sourcePath,
     "-ss", String(segment.startMs / 1000), "-to", String(segment.endMs / 1000),
     "-vf", buildScaleFilter("cover", 1080, 1920),
-    "-an", "-c:v", "libx264", "-crf", "20",
+    "-an", "-c:v", "libx264", "-threads", "4", "-crf", "20",
     clipPath,
   ]);
 
@@ -68,8 +73,11 @@ export function startAssetImportWorker() {
       logger.info({ batchId, fallbackMode }, "asset-import job received");
 
       let workDir: string | undefined;
+      let userId: string | undefined;
+      let plannedIndexes: number[] = [];
       try {
         const batch = await fetchImportBatch(batchId);
+        userId = batch.userId;
         workDir = await mkdtemp(join(tmpdir(), `asset-import-${batchId}-`));
 
         const sourcePath = join(workDir, `source${extname(batch.sourceStorageKey) || ".mp4"}`);
@@ -84,6 +92,7 @@ export function startAssetImportWorker() {
         } else {
           segments = await detectSegments(sourcePath, durationMs, { threshold: 0.4, minSegmentMs: 1500 });
         }
+        plannedIndexes = segments.map((s) => s.index);
 
         if (!fallbackMode && segments.length === 1) {
           // Nenhum corte real encontrado — para aqui, não processa nada até o usuário escolher o fallback.
@@ -113,6 +122,17 @@ export function startAssetImportWorker() {
         logger.error({ batchId, err: message }, "asset-import job failed");
         Sentry.captureException(err, { tags: { render_step: "asset_import_worker" }, contexts: { job: { batchId } } });
         await updateImportBatch(batchId, { status: "failed", error: message }).catch(() => {});
+        // Segmentos anteriores ao que falhou já podem ter subido pro MinIO, mas o batch
+        // nunca chega a salvar a lista de segments (só grava no fim, todos de uma vez) —
+        // sem isso ficariam órfãos pra sempre. removeObject numa key que não existe é no-op.
+        if (userId) {
+          await Promise.all(
+            plannedIndexes.flatMap((i) => [
+              storageClient.removeObject(BUCKET_ASSETS, `${userId}/imports/${batchId}/segment-${i}.mp4`).catch(() => {}),
+              storageClient.removeObject(BUCKET_ASSETS, `${userId}/imports/${batchId}/segment-${i}-thumb.jpg`).catch(() => {}),
+            ]),
+          );
+        }
         throw err;
       } finally {
         if (workDir) {
