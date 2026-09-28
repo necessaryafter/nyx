@@ -48,6 +48,7 @@ export type BlueprintNode =
   | { id: string; kind: "action"; type: "PlaySfx"; config: PlaySfxConfig }
   | { id: string; kind: "action"; type: "SetMusic"; config: SetMusicConfig }
   | { id: string; kind: "action"; type: "CameraEffect"; config: CameraEffectConfig }
+  | { id: string; kind: "action"; type: "ShowTitleCard"; config: ShowTitleCardConfig }
   | { id: string; kind: "output"; type: "Render"; config: Record<string, never> };
 
 export interface NarrationSourceConfig {
@@ -122,6 +123,16 @@ export interface ShowOverlayConfig {
 export interface SetSubtitleStyleConfig {
   wordsPerGroup?: number;
   style?: SubtitleStyle;
+}
+
+/** Card estilo post do Reddit; o título é sempre a primeira frase da narração. */
+export interface ShowTitleCardConfig {
+  subreddit?: string;
+  username?: string;
+  timeAgo?: string;
+  flair?: string;
+  upvotes?: string;
+  comments?: string;
 }
 
 export interface PlaySfxConfig {

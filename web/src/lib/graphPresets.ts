@@ -34,12 +34,14 @@ reddit.nodes = [
   { id: "background", kind: "source", type: "AssetSource", config: { assetIds: [], assetType: "video" } },
   { id: "on-sentence", kind: "event", type: "OnSentence", config: {} },
   { id: "subtitle", kind: "action", type: "SetSubtitleStyle", config: { wordsPerGroup: 2, style: { position: "center", fontSize: 72, color: "#ffffff", strokeColor: "#000000", strokeWidth: 8, highlightColor: "#FFD700" } } },
+  { id: "title-card", kind: "action", type: "ShowTitleCard", config: { subreddit: "r/historias", username: "", timeAgo: "há 5h", flair: "", upvotes: "18.4k", comments: "1.2k" } },
   { id: "render", kind: "output", type: "Render", config: {} },
 ];
 reddit.edges = [
   { id: "e1", from: "narration", to: "on-sentence", role: "narration" },
   { id: "e2", from: "on-sentence", to: "subtitle", role: "trigger" },
   { id: "e3", from: "subtitle", to: "render" },
+  { id: "e4", from: "title-card", to: "render" },
 ];
 
 export const GRAPH_PRESETS: GraphPreset[] = [

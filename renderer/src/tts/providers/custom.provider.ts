@@ -11,6 +11,12 @@ import { logger } from "@nyx/shared";
 
 const WHISPERX_URL = process.env.WHISPERX_URL ?? "http://localhost:8010";
 
+export interface ScriptSegment {
+  text: string;
+  startMs: number;
+  endMs: number;
+}
+
 export class CustomAudioProvider extends BaseTTSProvider {
   readonly name = "custom";
 
@@ -28,10 +34,12 @@ export class CustomAudioProvider extends BaseTTSProvider {
     const stream = await storageClient.getObject(BUCKET_ASSETS, assetId);
     await pipeline(Readable.from(stream), createWriteStream(audioFile));
 
-    logger.info({ hasText: !!text }, "CustomAudio: calling whisperx-service");
+    logger.info({ hasText: !!text, alignOnly: !!config.providerConfig?.segments }, "CustomAudio: calling whisperx-service");
 
     const form = new FormData();
     form.append("audio", new Blob([await readFile(audioFile)]), "audio.wav");
+    const segments = config.providerConfig?.segments as ScriptSegment[] | undefined;
+    if (segments?.length) form.append("segments", JSON.stringify(segments));
 
     const res = await fetch(`${WHISPERX_URL}/transcribe`, { method: "POST", body: form });
     if (!res.ok) {

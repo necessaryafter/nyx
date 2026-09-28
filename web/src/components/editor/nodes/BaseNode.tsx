@@ -30,7 +30,7 @@ const CATEGORY_STYLES: Record<string, NodeCategoryStyle> = {
 export function getNodeCategory(type: string): keyof typeof CATEGORY_STYLES {
   if (["NarrationSource", "AssetSource", "SceneSource", "MusicSource"].includes(type)) return "source";
   if (["OnTime", "OnWord", "OnSentence", "OnSilence", "OnSceneStart", "OnSceneEnd"].includes(type)) return "event";
-  if (["SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect"].includes(type)) return "action";
+  if (["SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect", "ShowTitleCard"].includes(type)) return "action";
   return "output";
 }
 

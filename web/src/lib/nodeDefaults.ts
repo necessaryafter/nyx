@@ -130,6 +130,14 @@ export const NODE_DEFINITIONS: Record<NodeType, NodeDefinition> = {
     kind: "action",
     defaultConfig: { volume: 0.15 },
   },
+  ShowTitleCard: {
+    label: "Card de título",
+    description: "Mostra a primeira frase como post do Reddit",
+    icon: "MessageSquareText",
+    color: "cyan-400",
+    kind: "action",
+    defaultConfig: { subreddit: "r/historias", username: "", timeAgo: "há 5h", flair: "", upvotes: "18.4k", comments: "1.2k" },
+  },
   CameraEffect: {
     label: "Efeito de câmera",
     description: "Zoom, shake e transições",
@@ -165,6 +173,7 @@ export const NODE_HANDLES: Record<NodeType, { inputs: string[]; outputs: string[
   PlaySfx: { inputs: ["event", "sfx"], outputs: ["action"] },
   SetMusic: { inputs: ["event", "music"], outputs: ["action"] },
   CameraEffect: { inputs: ["event"], outputs: ["action"] },
+  ShowTitleCard: { inputs: [], outputs: ["action"] },
   Render: { inputs: ["action", "music"], outputs: [] },
 };
 
@@ -176,6 +185,6 @@ export interface NodeCategory {
 export const NODE_CATEGORIES: NodeCategory[] = [
   { label: "ENTRADAS", nodes: ["NarrationSource", "AssetSource", "SceneSource", "MusicSource"] },
   { label: "GATILHOS", nodes: ["OnTime", "OnWord", "OnSentence", "OnSilence", "OnSceneStart", "OnSceneEnd"] },
-  { label: "AÇÕES", nodes: ["SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect"] },
+  { label: "AÇÕES", nodes: ["SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect", "ShowTitleCard"] },
   { label: "SAÍDA", nodes: ["Render"] },
 ];

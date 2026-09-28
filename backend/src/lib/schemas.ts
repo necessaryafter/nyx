@@ -142,6 +142,15 @@ const cameraEffectConfigSchema = z.object({
   }).optional(),
 });
 
+const showTitleCardConfigSchema = z.object({
+  subreddit: z.string().optional(),
+  username: z.string().optional(),
+  timeAgo: z.string().optional(),
+  flair: z.string().optional(),
+  upvotes: z.string().optional(),
+  comments: z.string().optional(),
+});
+
 const renderConfigSchema = z.object({});
 
 const blueprintNodeSchema = z.discriminatedUnion("type", [
@@ -161,6 +170,7 @@ const blueprintNodeSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("PlaySfx"), config: playSfxConfigSchema }),
   z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("SetMusic"), config: setMusicConfigSchema }),
   z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("CameraEffect"), config: cameraEffectConfigSchema }),
+  z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("ShowTitleCard"), config: showTitleCardConfigSchema }),
   z.object({ id: z.string(), kind: z.literal("output"), type: z.literal("Render"), config: renderConfigSchema }),
 ]);
 

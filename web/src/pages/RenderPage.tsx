@@ -20,7 +20,19 @@ export function RenderPage() {
   const createJob = useMutation({
     mutationFn: async () => {
       const draft = await api.post<{ id: string }>("/api/jobs/draft", { templateId });
-      await api.post(`/api/jobs/${draft.id}/audio`, { narration: { type: "tts", text, provider: "talkify" } });
+      // Usa o que o template define na Narração (provider, voz, velocidade) em vez de fixar Talkify.
+      const cfg = templateQuery.data?.graph.nodes.find((n) => n.type === "NarrationSource")?.config as
+        | { provider?: string; voice?: string; speed?: number }
+        | undefined;
+      await api.post(`/api/jobs/${draft.id}/audio`, {
+        narration: {
+          type: "tts",
+          text,
+          provider: cfg?.provider === "edge" ? "edge" : "talkify",
+          voice: cfg?.voice,
+          speed: cfg?.speed,
+        },
+      });
       return draft;
     },
     onSuccess: (draft) => navigate(`/jobs/${draft.id}/edit`),

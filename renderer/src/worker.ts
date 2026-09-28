@@ -109,7 +109,12 @@ export function startWorker() {
           throw new Error("graph has no NarrationSource node");
         }
 
-        const { audioPath, timestamps } = await prepareAudio(narrationNode.config, workDir, talkifyApiKey);
+        // Frases exatas do roteiro (edge-tts guarda uma por slot): o WhisperX só alinha os tempos.
+        const scriptSegments = ((dbJob.sceneSlots ?? []) as Array<{ startMs: number; endMs: number; narrationText?: string }>)
+          .filter((s) => s.narrationText)
+          .map((s) => ({ text: s.narrationText!, startMs: s.startMs, endMs: s.endMs }));
+
+        const { audioPath, timestamps } = await prepareAudio(narrationNode.config, workDir, talkifyApiKey, scriptSegments);
         logger.info({ jobId, timestamps: timestamps.length }, "audio ready");
 
         const sceneSourceNode = resolvedGraph.nodes.find((n) => n.type === "SceneSource");

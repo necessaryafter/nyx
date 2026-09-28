@@ -291,6 +291,7 @@ const MINIMAP_COLORS: Record<string, string> = {
   PlaySfx: "#22d3ee",
   SetMusic: "#22d3ee",
   CameraEffect: "#22d3ee",
+  ShowTitleCard: "#22d3ee",
   Render: "#fb923c",
 };
 

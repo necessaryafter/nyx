@@ -25,10 +25,11 @@ interface Message {
   isError?: boolean;
 }
 
+// Modelos antigos (2.0-flash, 1.5-pro) foram descontinuados pelo Google — a API já nem aceita mais.
 const AI_MODELS = [
-  { id: "gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite" },
-  { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-  { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
+  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite (rápido)" },
+  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (mais recente)" },
+  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (mais caprichado)" },
 ] as const;
 
 const INITIAL_MESSAGE: Message = {
@@ -136,7 +137,8 @@ export function Step2_Narration({
   }, []);
 
   const { data: job } = useJob(jobId);
-  const ttsProvider = (job?.graph?.nodes.find((n) => n.type === "NarrationSource")?.config?.provider as "talkify" | undefined) ?? "talkify";
+  const narrationCfg = job?.graph?.nodes.find((n) => n.type === "NarrationSource")?.config;
+  const ttsProvider = (narrationCfg?.provider as "talkify" | "edge" | undefined) ?? "talkify";
 
   useEffect(() => {
     if (!job) return;
@@ -198,7 +200,13 @@ export function Step2_Narration({
   async function handleSubmit() {
     if (tab === "tts") {
       if (!script.trim()) return;
-      await startAudio.mutateAsync({ type: "tts", text: script.trim(), provider: ttsProvider });
+      await startAudio.mutateAsync({
+        type: "tts",
+        text: script.trim(),
+        provider: ttsProvider,
+        voice: narrationCfg?.voice as string | undefined,
+        speed: narrationCfg?.speed as number | undefined,
+      });
     } else {
       if (!audioAssetId) return;
       await startAudio.mutateAsync({ type: "audio", assetId: audioAssetId });

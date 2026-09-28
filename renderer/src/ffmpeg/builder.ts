@@ -7,6 +7,7 @@ import { zoomShakeFilter } from "./filters/zoom";
 import { applyTransitions } from "./filters/transition";
 import { buildSubtitleFilter } from "./filters/subtitle";
 import { prepareOverlayClips, buildOverlayFilterChain } from "./filters/overlay";
+import { renderTitleCard } from "./filters/titleCard";
 import type { RenderPlan, PendingSfx } from "../compile/index";
 
 const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
@@ -193,8 +194,12 @@ async function composite(
 ): Promise<string> {
   const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=${fps}`;
 
+  const titleCard = plan.titleCard ? await renderTitleCard(plan.titleCard, workDir, width, height) : undefined;
+  // Enquanto o card está na tela o título já aparece nele, então a legenda começa depois.
+  const subtitleTimestamps = plan.titleCard ? plan.timestamps.slice(plan.titleCard.wordCount) : plan.timestamps;
+
   const subtitleFilter = plan.subtitles
-    ? await buildSubtitleFilter(plan.timestamps, plan.subtitles.wordsPerGroup, plan.subtitles.style, width, height, workDir)
+    ? await buildSubtitleFilter(subtitleTimestamps, plan.subtitles.wordsPerGroup, plan.subtitles.style, width, height, workDir)
     : undefined;
 
   const preparedOverlays = plan.overlays.length > 0
@@ -203,7 +208,7 @@ async function composite(
 
   const outFile = join(workDir, "composited.mp4");
 
-  if (preparedOverlays.length === 0 && !subtitleFilter) {
+  if (preparedOverlays.length === 0 && !subtitleFilter && !titleCard) {
     await run([
       "-y", "-i", baseVideo,
       "-vf", scaleFilter,
@@ -214,11 +219,11 @@ async function composite(
     return outFile;
   }
 
-  const { inputArgs, filterComplex, finalLabel } = buildOverlayFilterChain(preparedOverlays, subtitleFilter);
+  const { inputArgs, filterComplex, finalLabel } = buildOverlayFilterChain(preparedOverlays, subtitleFilter, titleCard);
 
   const scaledLabel = "v_scaled";
   const fullFilter = `[0:v]${scaleFilter}[${scaledLabel}];` +
-    filterComplex.replace(/^\[0:v\]/, `[${scaledLabel}]`);
+    filterComplex.replaceAll("[0:v]", `[${scaledLabel}]`);
 
   await run([
     "-y",

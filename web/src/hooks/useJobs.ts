@@ -50,7 +50,7 @@ export function useStartAudio(jobId: string) {
     mutationFn: (narration: {
       type: "tts";
       text: string;
-      provider: "talkify";
+      provider: "talkify" | "edge";
       voice?: string;
       speed?: number;
     } | { type: "audio"; assetId: string }) =>

@@ -54,6 +54,7 @@ const NODE_COPY: Partial<Record<NodeType, string>> = {
   PlaySfx: "Tocar efeito",
   SetMusic: "Ajustar trilha",
   CameraEffect: "Efeito de câmera",
+  ShowTitleCard: "Card de título",
   Render: "Render final",
 };
 
@@ -136,7 +137,7 @@ export function graphToFlow(
   const typeOrder: NodeType[] = [
     "NarrationSource", "AssetSource", "SceneSource", "MusicSource",
     "OnTime", "OnWord", "OnSentence", "OnSilence", "OnSceneStart", "OnSceneEnd",
-    "SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect",
+    "SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect", "ShowTitleCard",
     "Render",
   ];
 

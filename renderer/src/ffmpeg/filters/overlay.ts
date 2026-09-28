@@ -1,6 +1,7 @@
 import { extname, join } from "path";
 import { run } from "../runner";
 import type { PendingOverlay } from "../../compile/overlays";
+import type { RenderedTitleCard } from "./titleCard";
 
 export interface PreparedOverlay extends PendingOverlay {
   clipPath: string; // converted to video clip
@@ -44,13 +45,16 @@ export async function prepareOverlayClips(
 export function buildOverlayFilterChain(
   overlays: PreparedOverlay[],
   subtitleFilter: string | undefined,
+  card?: RenderedTitleCard,
 ): { inputArgs: string[]; filterComplex: string; finalLabel: string } {
-  if (overlays.length === 0 && !subtitleFilter) {
+  if (overlays.length === 0 && !subtitleFilter && !card) {
     return { inputArgs: [], filterComplex: "", finalLabel: "0:v" };
   }
 
   const inputArgs: string[] = [];
   for (const overlay of overlays) inputArgs.push("-i", overlay.clipPath);
+  // O card é PNG com alpha (cantos arredondados): entra direto, sem passar pelo clip libx264 que perderia a transparência.
+  if (card) inputArgs.push("-loop", "1", "-framerate", "30", "-t", String(card.endSeconds), "-i", card.path);
 
   const filterParts: string[] = [];
   let currentLabel = "0:v";
@@ -58,7 +62,7 @@ export function buildOverlayFilterChain(
   for (let i = 0; i < overlays.length; i++) {
     const overlay = overlays[i]!;
     const inputIdx = i + 1;
-    const isLast = i === overlays.length - 1 && !subtitleFilter;
+    const isLast = i === overlays.length - 1 && !subtitleFilter && !card;
     const outLabel = isLast ? "v_final" : `v_ov${i}`;
 
     if (overlay.opacity < 1.0) {
@@ -73,6 +77,18 @@ export function buildOverlayFilterChain(
       );
     }
 
+    currentLabel = outLabel;
+  }
+
+  if (card) {
+    const fade = 0.2;
+    const outLabel = subtitleFilter ? "v_card" : "v_final";
+    filterParts.push(
+      `[${overlays.length + 1}:v]format=rgba,fade=t=in:st=0:d=${fade}:alpha=1,fade=t=out:st=${Math.max(0, card.endSeconds - fade)}:d=${fade}:alpha=1[card]`,
+    );
+    filterParts.push(
+      `[${currentLabel}][card]overlay=${card.x}:${card.y}:enable='between(t,${card.startSeconds},${card.endSeconds})'[${outLabel}]`,
+    );
     currentLabel = outLabel;
   }
 

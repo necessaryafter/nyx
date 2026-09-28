@@ -10,6 +10,7 @@ import {
   Image,
   ImagePlay,
   Info,
+  MessageSquareText,
   Mic,
   Music,
   Pilcrow,
@@ -113,6 +114,7 @@ const NODE_SECTIONS = [
       { type: "PlaySfx" as NodeType, label: "Efeito sonoro", icon: Volume2, color: "text-cyan-400" },
       { type: "SetMusic" as NodeType, label: "Ajustar trilha", icon: Music, color: "text-cyan-400" },
       { type: "CameraEffect" as NodeType, label: "Efeito de câmera", icon: Sparkles, color: "text-cyan-400" },
+      { type: "ShowTitleCard" as NodeType, label: "Card de título", icon: MessageSquareText, color: "text-cyan-400" },
     ],
   },
   {

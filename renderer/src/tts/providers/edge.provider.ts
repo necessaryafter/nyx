@@ -20,8 +20,10 @@ export class EdgeTTSProvider extends BaseTTSProvider {
     if (!text) throw new Error("EdgeTTSProvider: text is required");
 
     const voice = config.voice ?? DEFAULT_VOICE;
+    // config.speed é um multiplicador (1 = normal); edge-tts espera um % relativo.
+    const rate = config.speed ? `${config.speed >= 1 ? "+" : ""}${Math.round((config.speed - 1) * 100)}%` : "+0%";
     const chunks = splitTextIntoChunks(text, MAX_CHUNK_CHARS);
-    logger.info({ voice, textLen: text.length, chunks: chunks.length }, "EdgeTTS: synthesizing");
+    logger.info({ voice, rate, textLen: text.length, chunks: chunks.length }, "EdgeTTS: synthesizing");
 
     const results: Array<{ audio: Buffer; wordTimestamps: WordTimestamp[] }> = [];
     let offsetMs = 0;
@@ -31,7 +33,7 @@ export class EdgeTTSProvider extends BaseTTSProvider {
       const mp3File = join(tmpdir(), `edge-tts-${id}.mp3`);
       const vttFile = join(tmpdir(), `edge-tts-${id}.vtt`);
 
-      await runEdgeTTS(chunks[i]!, voice, mp3File, vttFile);
+      await runEdgeTTS(chunks[i]!, voice, rate, mp3File, vttFile);
 
       const [audio, vtt] = await Promise.all([readFile(mp3File), readFile(vttFile, "utf8")]);
 
@@ -96,12 +98,13 @@ function splitTextIntoChunks(text: string, maxChars: number): string[] {
   return chunks;
 }
 
-function runEdgeTTS(text: string, voice: string, mp3Out: string, vttOut: string): Promise<void> {
+function runEdgeTTS(text: string, voice: string, rate: string, mp3Out: string, vttOut: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
       "edge-tts",
       [
         "--voice", voice,
+        "--rate", rate,
         "--text", text,
         "--write-media", mp3Out,
         "--write-subtitles", vttOut,

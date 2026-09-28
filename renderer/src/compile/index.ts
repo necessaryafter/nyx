@@ -8,8 +8,9 @@ import { extractOverlays, type PendingOverlay } from "./overlays";
 import { extractSfx, type PendingSfx } from "./sfx";
 import { extractMusic, type MusicConfig } from "./music";
 import { extractMediaPool, type MediaPool } from "./pool";
+import { extractTitleCard, type TitleCardPlan } from "./titleCard";
 
-export type { SceneAsset, CameraEffects, SubtitleConfig, PendingOverlay, PendingSfx, MusicConfig, MediaPool };
+export type { TitleCardPlan, SceneAsset, CameraEffects, SubtitleConfig, PendingOverlay, PendingSfx, MusicConfig, MediaPool };
 
 export interface RenderPlan {
   settings: Graph["settings"];
@@ -22,6 +23,7 @@ export interface RenderPlan {
   subtitles?: SubtitleConfig;
   music: MusicConfig;
   sfx: PendingSfx[];
+  titleCard?: TitleCardPlan;
 }
 
 export interface CompilePlanInput {
@@ -54,5 +56,6 @@ export function compilePlan({ graph, audioPath, timestamps, assetMap, sceneAsset
     subtitles: extractSubtitles(graph, actions),
     music: extractMusic(graph, assetMap),
     sfx: extractSfx(actions, assetMap),
+    titleCard: extractTitleCard(graph, timestamps),
   };
 }

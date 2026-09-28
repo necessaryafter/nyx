@@ -21,8 +21,15 @@ import type {
   SetMusicConfig,
   SetSubtitleStyleConfig,
   ShowOverlayConfig,
+  ShowTitleCardConfig,
   SubtitleStyle,
 } from "../../lib/types";
+
+// speed é um multiplicador (1 = normal); na tela aparece como % em relação ao normal (1.02 -> +2%).
+function formatSpeedPct(speed = 1): string {
+  const pct = Math.round((speed - 1) * 100);
+  return pct === 0 ? "normal (0%)" : `${pct > 0 ? "+" : ""}${pct}%`;
+}
 
 const inputCls = "h-8 w-full rounded-lg border border-nyx-border bg-nyx-void px-2.5 text-xs text-nyx-text-primary focus:border-nyx-cyan-500 focus:outline-none";
 
@@ -293,8 +300,8 @@ function NarrationProps({ nodeId, config }: { nodeId: string; config: NarrationS
         <input value={config.voice ?? ""} onChange={(e) => update(nodeId, { voice: e.target.value || undefined })} placeholder="Padrao do provider" className={inputCls} />
       </div>
       <div>
-        <FieldLabel>Velocidade: {(config.speed ?? 1).toFixed(1)}x</FieldLabel>
-        <input type="range" min={0.5} max={2} step={0.1} value={config.speed ?? 1} onChange={(e) => update(nodeId, { speed: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
+        <FieldLabel>Velocidade: {formatSpeedPct(config.speed)}</FieldLabel>
+        <input type="range" min={0.5} max={2} step={0.01} value={config.speed ?? 1} onChange={(e) => update(nodeId, { speed: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
       </div>
     </div>
   );
@@ -568,6 +575,27 @@ function ActionProps({ nodeId, type, config }: { nodeId: string; type: NodeType;
         <SectionLabel>Legenda</SectionLabel>
         <div><FieldLabel>Palavras por grupo</FieldLabel><input type="number" min={1} max={10} value={cfg.wordsPerGroup ?? 3} onChange={(e) => update(nodeId, { wordsPerGroup: Number(e.target.value) })} className={inputCls} /></div>
         <SubtitleStyleFields value={cfg.style} onChange={(style) => update(nodeId, { style })} />
+      </div>
+    );
+  }
+  if (type === "ShowTitleCard") {
+    const cfg = config as ShowTitleCardConfig;
+    const field = (label: string, key: keyof ShowTitleCardConfig, placeholder: string) => (
+      <div key={key}>
+        <FieldLabel>{label}</FieldLabel>
+        <input value={cfg[key] ?? ""} onChange={(e) => update(nodeId, { [key]: e.target.value })} placeholder={placeholder} className={inputCls} />
+      </div>
+    );
+    return (
+      <div className="space-y-3">
+        <SectionLabel>Card de título</SectionLabel>
+        <p className="text-xs text-nyx-text-muted">O título é a primeira frase da narração. O card some quando ela termina e a legenda segue normal.</p>
+        {field("Subreddit", "subreddit", "r/historias")}
+        {field("Usuario", "username", "funcionario_revoltado")}
+        {field("Tempo", "timeAgo", "há 5h")}
+        {field("Tag (flair)", "flair", "Relato da firma")}
+        {field("Upvotes", "upvotes", "18.4k")}
+        {field("Comentarios", "comments", "1.2k")}
       </div>
     );
   }
