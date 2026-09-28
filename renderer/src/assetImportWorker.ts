@@ -5,7 +5,7 @@ import { join, extname } from "path";
 import { tmpdir } from "os";
 import { logger, storageClient, BUCKET_ASSETS } from "@nyx/shared";
 import { Sentry } from "./lib/sentry";
-import { fetchImportBatch, updateImportBatch, type ImportSegment } from "./database";
+import { fetchImportBatch, updateImportBatch, appendImportSegment, type ImportSegment } from "./database";
 import { downloadAsset } from "./prepare/assets";
 import { probeDuration } from "./ffmpeg/probe";
 import { run } from "./ffmpeg/runner";
@@ -62,7 +62,13 @@ async function processSegment(
     storageClient.putObject(BUCKET_ASSETS, thumbnailKey, createReadStream(thumbPath)),
   ]);
 
-  return { index: segment.index, startMs: segment.startMs, endMs: segment.endMs, clipStorageKey, thumbnailKey, selected: true };
+  const result: ImportSegment = {
+    index: segment.index, startMs: segment.startMs, endMs: segment.endMs, clipStorageKey, thumbnailKey, selected: true,
+  };
+  // Grava assim que este corte termina — não espera o lote inteiro. É o que permite
+  // revisar/confirmar cortes prontos enquanto o resto ainda está sendo processado.
+  await appendImportSegment(batchId, result);
+  return result;
 }
 
 export function startAssetImportWorker() {
@@ -73,11 +79,8 @@ export function startAssetImportWorker() {
       logger.info({ batchId, fallbackMode }, "asset-import job received");
 
       let workDir: string | undefined;
-      let userId: string | undefined;
-      let plannedIndexes: number[] = [];
       try {
         const batch = await fetchImportBatch(batchId);
-        userId = batch.userId;
         workDir = await mkdtemp(join(tmpdir(), `asset-import-${batchId}-`));
 
         const sourcePath = join(workDir, `source${extname(batch.sourceStorageKey) || ".mp4"}`);
@@ -92,7 +95,6 @@ export function startAssetImportWorker() {
         } else {
           segments = await detectSegments(sourcePath, durationMs, { threshold: 0.4, minSegmentMs: 1500 });
         }
-        plannedIndexes = segments.map((s) => s.index);
 
         if (!fallbackMode && segments.length === 1) {
           // Nenhum corte real encontrado — para aqui, não processa nada até o usuário escolher o fallback.
@@ -115,24 +117,17 @@ export function startAssetImportWorker() {
           processSegment(s, sourcePath, workDir!, batch.userId, batchId),
         );
 
-        await updateImportBatch(batchId, { status: "awaiting_review", sourceDurationMs: durationMs, segments: processed });
+        // segments já foi gravado incrementalmente (appendImportSegment) — só falta o status.
+        await updateImportBatch(batchId, { status: "awaiting_review", sourceDurationMs: durationMs });
         logger.info({ batchId, segments: processed.length }, "asset-import segments ready");
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error({ batchId, err: message }, "asset-import job failed");
         Sentry.captureException(err, { tags: { render_step: "asset_import_worker" }, contexts: { job: { batchId } } });
+        // Não apaga nada aqui: os cortes que já terminaram (gravados incrementalmente em
+        // `segments`) continuam válidos mesmo com o lote em `failed` — dá pra confirmar
+        // esses depois (POST .../confirm aceita status failed). Quem limpa é confirm/discard.
         await updateImportBatch(batchId, { status: "failed", error: message }).catch(() => {});
-        // Segmentos anteriores ao que falhou já podem ter subido pro MinIO, mas o batch
-        // nunca chega a salvar a lista de segments (só grava no fim, todos de uma vez) —
-        // sem isso ficariam órfãos pra sempre. removeObject numa key que não existe é no-op.
-        if (userId) {
-          await Promise.all(
-            plannedIndexes.flatMap((i) => [
-              storageClient.removeObject(BUCKET_ASSETS, `${userId}/imports/${batchId}/segment-${i}.mp4`).catch(() => {}),
-              storageClient.removeObject(BUCKET_ASSETS, `${userId}/imports/${batchId}/segment-${i}-thumb.jpg`).catch(() => {}),
-            ]),
-          );
-        }
         throw err;
       } finally {
         if (workDir) {

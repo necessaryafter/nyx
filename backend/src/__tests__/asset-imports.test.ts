@@ -149,10 +149,36 @@ describe("POST /api/asset-imports/:id/confirm", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 409 when the batch isn't awaiting review", async () => {
-    mockDatabase.select.mockReturnValueOnce(chainResult([{ ...BATCH_ROW, status: "detecting" }]));
+  it("returns 409 when the batch is already done", async () => {
+    mockDatabase.select.mockReturnValueOnce(chainResult([{ ...BATCH_ROW, status: "done" }]));
     const res = await app.handle(jsonRequest(`/api/asset-imports/${BATCH_ID}/confirm`, "POST", { selectedIndexes: [1] }));
     expect(res.status).toBe(409);
+  });
+
+  it("confirms a subset while still detecting, without closing the batch", async () => {
+    mockDatabase.select.mockReturnValueOnce(chainResult([{ ...BATCH_ROW, status: "detecting" }]));
+    const insertBuilder = chainResult([]);
+    mockDatabase.insert.mockReturnValue(insertBuilder);
+
+    const res = await app.handle(jsonRequest(`/api/asset-imports/${BATCH_ID}/confirm`, "POST", { selectedIndexes: [1] }));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("detecting"); // lote continua aberto pro resto dos cortes
+    expect(body.imported).toBe(1);
+    expect(mockDatabase.update).toHaveBeenCalled(); // splice atômico dos confirmados, sem apagar do MinIO
+  });
+
+  it("confirms leftover segments from a failed batch (recovery)", async () => {
+    mockDatabase.select.mockReturnValueOnce(chainResult([{ ...BATCH_ROW, status: "failed" }]));
+    mockDatabase.insert.mockReturnValue(chainResult([]));
+
+    const res = await app.handle(jsonRequest(`/api/asset-imports/${BATCH_ID}/confirm`, "POST", { selectedIndexes: [1, 2, 3] }));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("done");
+    expect(body.imported).toBe(3);
   });
 
   it("returns 400 for an index that doesn't exist in the batch", async () => {

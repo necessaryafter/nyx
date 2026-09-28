@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
 import { cn } from "../../lib/cn";
@@ -7,13 +7,14 @@ import { useImportBatch, useConfirmImport, useDiscardImport } from "../../hooks/
 
 interface Props {
   batchId: string;
+  onClose: () => void;
 }
 
 function formatDuration(ms: number) {
   return `${Math.round(ms / 1000)}s`;
 }
 
-export function ImportReviewModal({ batchId }: Props) {
+export function ImportReviewModal({ batchId, onClose }: Props) {
   const { data: batch, isPending } = useImportBatch(batchId);
   const confirmImport = useConfirmImport(batchId);
   const discardImport = useDiscardImport();
@@ -22,6 +23,7 @@ export function ImportReviewModal({ batchId }: Props) {
 
   const segments = batch?.segments ?? [];
   const activeSelected = selected ?? new Set(segments.filter((s) => s.selected).map((s) => s.index));
+  const stillProcessing = batch?.status === "detecting";
 
   const toggle = (index: number) => {
     const next = new Set(activeSelected);
@@ -30,14 +32,31 @@ export function ImportReviewModal({ batchId }: Props) {
     setSelected(next);
   };
 
+  const handleConfirm = async () => {
+    const result = await confirmImport.mutateAsync({ selectedIndexes: [...activeSelected], names });
+    // Parcial (lote continua "detecting"): fecha o modal, mas segue processando — dá pra
+    // confirmar de novo depois. Final: não sobra nada pra revisar, fecha de vez.
+    if (result.status === "done" || !stillProcessing) onClose();
+    else setSelected(null);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-nyx-border bg-nyx-deep shadow-2xl">
-        <div className="border-b border-nyx-border px-6 py-4">
-          <h2 className="font-display text-base font-bold text-nyx-text-primary">Revisar cortes</h2>
-          <p className="mt-0.5 text-xs text-nyx-text-muted">
-            {batch ? `${batch.sourceName} · ${segments.length} trechos encontrados` : "Carregando..."}
-          </p>
+        <div className="flex items-center justify-between border-b border-nyx-border px-6 py-4">
+          <div>
+            <h2 className="font-display text-base font-bold text-nyx-text-primary">Revisar cortes</h2>
+            <p className="mt-0.5 text-xs text-nyx-text-muted">
+              {batch ? `${batch.sourceName} · ${segments.length} trechos prontos` : "Carregando..."}
+              {stillProcessing && <span className="ml-1 text-nyx-cyan-500">· ainda processando outros cortes...</span>}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-nyx-text-muted hover:bg-nyx-hover hover:text-nyx-text-primary transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -86,16 +105,21 @@ export function ImportReviewModal({ batchId }: Props) {
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-nyx-border px-6 py-4">
-          <Button variant="ghost" size="sm" disabled={discardImport.isPending} onClick={() => discardImport.mutate(batchId)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={discardImport.isPending}
+            onClick={() => discardImport.mutate(batchId, { onSuccess: onClose })}
+          >
             Cancelar importação
           </Button>
           <Button
             variant="primary"
             size="sm"
             disabled={activeSelected.size === 0 || confirmImport.isPending}
-            onClick={() => confirmImport.mutate({ selectedIndexes: [...activeSelected], names })}
+            onClick={handleConfirm}
           >
-            Confirmar ({activeSelected.size} selecionados)
+            {stillProcessing ? "Salvar" : "Confirmar"} ({activeSelected.size} selecionados)
           </Button>
         </div>
       </div>

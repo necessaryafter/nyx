@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Upload,
@@ -386,6 +386,20 @@ export function AssetsPage() {
   const detectingBatch = pendingImports.find((b) => b.status === "detecting");
   const fallbackBatch = pendingImports.find((b) => b.status === "awaiting_fallback_choice");
   const reviewBatch = pendingImports.find((b) => b.status === "awaiting_review");
+  // Cortes já prontos num lote que ainda processa (ou que falhou no meio) — só aparece
+  // um botão manual pra espiar/salvar, não abre sozinho (o usuário pediu pra ser assim).
+  const partialBatch = pendingImports.find(
+    (b) => (b.status === "detecting" || b.status === "failed") && b.segments.length > 0,
+  );
+
+  const [openReviewId, setOpenReviewId] = useState<string | null>(null);
+  const autoOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (reviewBatch && autoOpenedRef.current !== reviewBatch.id) {
+      autoOpenedRef.current = reviewBatch.id;
+      setOpenReviewId(reviewBatch.id);
+    }
+  }, [reviewBatch?.id]);
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -459,7 +473,7 @@ export function AssetsPage() {
   return (
     <div className="space-y-6">
       {fallbackBatch && <FallbackChoiceModal batchId={fallbackBatch.id} sourceName={fallbackBatch.sourceName} />}
-      {reviewBatch && <ImportReviewModal batchId={reviewBatch.id} />}
+      {openReviewId && <ImportReviewModal batchId={openReviewId} onClose={() => setOpenReviewId(null)} />}
 
       {/* Header */}
       <motion.div
@@ -554,6 +568,30 @@ export function AssetsPage() {
           <p className="text-sm text-nyx-text-secondary">
             Analisando cortes de <strong className="text-nyx-text-primary">{detectingBatch.sourceName}</strong>...
           </p>
+          {partialBatch?.id === detectingBatch.id && (
+            <button
+              onClick={() => setOpenReviewId(detectingBatch.id)}
+              className="ml-auto shrink-0 text-xs text-nyx-cyan-500 hover:underline"
+            >
+              Ver progresso ({partialBatch.segments.length} pronto{partialBatch.segments.length > 1 ? "s" : ""})
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Lote que falhou no meio, mas deixou cortes prontos pra salvar */}
+      {!detectingBatch && partialBatch && (
+        <div className="flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/5 p-3">
+          <p className="text-sm text-nyx-text-secondary">
+            O corte de <strong className="text-nyx-text-primary">{partialBatch.sourceName}</strong> falhou, mas{" "}
+            {partialBatch.segments.length} pedaço{partialBatch.segments.length > 1 ? "s" : ""} já {partialBatch.segments.length > 1 ? "estão" : "está"} pronto{partialBatch.segments.length > 1 ? "s" : ""}.
+          </p>
+          <button
+            onClick={() => setOpenReviewId(partialBatch.id)}
+            className="ml-auto shrink-0 text-xs text-nyx-cyan-500 hover:underline"
+          >
+            Ver e salvar
+          </button>
         </div>
       )}
 

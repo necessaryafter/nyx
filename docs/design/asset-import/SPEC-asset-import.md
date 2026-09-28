@@ -97,10 +97,18 @@ Upload em 3 passos, mesmo padrão de `/api/assets/upload/multipart/*` — o "com
 | POST | `/:id/fallback` | `{ mode: "fixed" \| "single" }` — só válido quando `status = awaiting_fallback_choice` |
 | POST | `/:id/confirm` | `{ selectedIndexes: number[], names?: Record<number,string> }` — ver abaixo |
 | DELETE | `/:id` | Descarta o lote inteiro (limpa MinIO, apaga a linha) — só antes de confirmar |
-| GET | `/` | Lista lotes do usuário em `detecting \| awaiting_fallback_choice \| awaiting_review` — pra retomar revisão se saiu da tela no meio |
+| GET | `/` | Lista lotes do usuário em `detecting \| awaiting_fallback_choice \| awaiting_review \| failed` — pra retomar revisão se saiu da tela no meio, ou recuperar o que já foi cortado antes de uma falha |
 
-### `POST /:id/confirm`
-Só válido com `status = awaiting_review`. Pra cada índice em `selectedIndexes`: `INSERT INTO assets (id, userId, name, type: "video", storageKey: segment.clipStorageKey, sizeBytes, importBatchId: batchId)` — **sem mover o arquivo no MinIO**, o storageKey do asset passa a ser o mesmo key temporário que já existe (deixa de ser temporário só porque agora tem uma linha em `assets` apontando pra ele). Pra cada índice **não** selecionado: `minio.removeObject` do clip e da miniatura. Some com o `source_storage_key`. Status → `done`.
+### `POST /:id/confirm` — confirmação parcial (revisão incremental)
+Não exige mais `status = awaiting_review`: aceito também em `detecting` (lote ainda sendo cortado) e `failed` (deu erro no meio, mas sobrou corte pronto) — só `done`/`discarded` são terminais de verdade. Isso existe pra duas coisas: deixar salvar cortes já prontos sem esperar o vídeo inteiro terminar, e não perder o que já funcionou se o resto falhar.
+
+O worker grava cada segmento em `segments` assim que termina (não espera o lote inteiro — `UPDATE ... SET segments = segments || novo_segmento`, atômico, seguro com processamento em paralelo). O `GET /:id` já mostra o que existir a qualquer momento.
+
+Pra cada índice em `selectedIndexes`: `INSERT INTO assets (...)` igual antes — **sem mover o arquivo no MinIO**.
+- Se `status = detecting` (ainda processando): confirmação **parcial** — remove só os confirmados de `segments` (`UPDATE` atômico via subquery jsonb, não pisa em um append concorrente do worker); os não selecionados continuam lá pra decidir depois; status continua `detecting`.
+- Se `status = awaiting_review` ou `failed` (não vem mais nada): confirmação **final** — os não selecionados são removidos do MinIO agora, o `source_storage_key` some, status → `done`.
+
+Front: botão manual "ver progresso" (não abre sozinho enquanto ainda processa) — decisão do usuário, não é intrusivo.
 
 ## Estrutura
 
@@ -130,7 +138,7 @@ Mesmo padrão de `routes/schedulers.ts`: Zod pra validação, `set.status` + `{ 
 
 - **Sempre:** apagar os objetos temporários do MinIO ao descartar/rejeitar — não deixar lixo órfão.
 - **Perguntar antes:** mudar os limites de upload (2h/2GB, valores da suposição do mapa); mudar `-crf`/qualidade do recorte.
-- **Nunca:** confirmar um lote que não está em `awaiting_review`; apagar um asset já confirmado (`importBatchId` preenchido) por causa de uma ação no lote — uma vez confirmado, o asset é independente do lote.
+- **Nunca:** confirmar um lote `done`/`discarded`; apagar um asset já confirmado (`importBatchId` preenchido) por causa de uma ação no lote — uma vez confirmado, o asset é independente do lote (por isso o worker, ao falhar, nunca apaga o que sobrou em `segments`: só quem decide isso é confirm/discard).
 
 ### Variáveis de ambiente
 ```

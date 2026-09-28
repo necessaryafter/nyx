@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, inArray, and } from "drizzle-orm";
+import { eq, inArray, and, sql } from "drizzle-orm";
 import postgres from "postgres";
 import { jobs, assets, integrations, assetImportBatches, type ImportSegment } from "./schema";
 import type { Graph } from "../graph";
@@ -51,6 +51,15 @@ export async function fetchImportBatch(batchId: string) {
   const [row] = await db.select().from(assetImportBatches).where(eq(assetImportBatches.id, batchId)).limit(1);
   if (!row) throw new Error(`import batch ${batchId} not found`);
   return row;
+}
+
+// Concat atômico (SET segments = segments || novo) — vários segmentos podem terminar em
+// paralelo (SEGMENT_CONCURRENCY), um "lê tudo, junta, regrava" perderia update; isso não.
+export async function appendImportSegment(batchId: string, segment: ImportSegment) {
+  await db
+    .update(assetImportBatches)
+    .set({ segments: sql`${assetImportBatches.segments} || ${JSON.stringify([segment])}::jsonb` })
+    .where(eq(assetImportBatches.id, batchId));
 }
 
 export async function updateImportBatch(
