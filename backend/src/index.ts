@@ -41,6 +41,11 @@ const app = new Elysia()
     // Behind Caddy every request comes from the proxy IP; Caddy overwrites X-Forwarded-For.
     generator: (req, server) =>
       req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? server?.requestIP(req)?.address ?? "",
+    // Upload em chunks (assets normais e asset-import) manda centenas de PUTs pequenos
+    // em rajada — sem isso, um vídeo grande estoura o teto global e a rota quebra no
+    // meio (as próprias rotas já dizem "sem rate limit apertado aqui", mas o limite
+    // global ainda contava esses PUTs).
+    skip: (req) => req.method === "PUT" && new URL(req.url).pathname.endsWith("/chunk"),
   }))
   .get("/health", () => ({ status: "ok" }))
   .use(authRoutes)
