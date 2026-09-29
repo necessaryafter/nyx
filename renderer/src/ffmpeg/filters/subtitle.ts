@@ -31,6 +31,14 @@ function groupWords(timestamps: WordTimestamp[], perGroup: number): WordGroup[] 
     const chunk = timestamps.slice(i, i + perGroup);
     groups.push({ words: chunk, startMs: chunk[0]!.startMs, endMs: chunk[chunk.length - 1]!.endMs });
   }
+  // Defesa contra timestamps de origem (ex.: alinhamento por segmento no whisperx-service)
+  // que se sobrepõem na fronteira entre grupos — sem isso, dois eventos ASS ficam ativos ao
+  // mesmo tempo e o libass empilha as duas legendas (2 linhas, "pulo" visual na virada de frase).
+  for (let i = 0; i < groups.length - 1; i++) {
+    if (groups[i]!.endMs > groups[i + 1]!.startMs) {
+      groups[i]!.endMs = groups[i + 1]!.startMs;
+    }
+  }
   return groups;
 }
 
