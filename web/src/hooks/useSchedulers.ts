@@ -24,6 +24,7 @@ export interface SchedulerInput {
   randomizeAssetOrder?: boolean;
   ctaTemplate?: string;
   finalCtaTemplate?: string;
+  finalPartEnabled?: boolean;
   aiModel: string;
   cronPattern?: string | null;
   timezone?: string;
@@ -134,6 +135,7 @@ export function usePreviewSeriesScript() {
       minutesPerPart: number;
       ctaTemplate?: string;
       finalCtaTemplate?: string;
+      finalPartEnabled?: boolean;
     }) => api.post<SeriesScript>("/api/ai/series-script", input),
   });
 }

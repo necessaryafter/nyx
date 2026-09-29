@@ -194,6 +194,7 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
       minutesPerPart: scheduler.mode === "single" ? (scheduler.totalMinutes ?? 0) : (scheduler.minutesPerPart ?? 0),
       ctaTemplate: scheduler.ctaTemplate,
       finalCtaTemplate: scheduler.finalCtaTemplate ?? undefined,
+      finalPartEnabled: scheduler.finalPartEnabled,
       avoidTitles,
     });
   } catch (err) {

@@ -34,6 +34,8 @@ export const schedulers = pgTable("schedulers", {
   minutesPerPart: numeric("minutes_per_part", { mode: "number" }),
   ctaTemplate: text("cta_template").notNull().default("Curta e comente para a parte {next}."),
   finalCtaTemplate: text("final_cta_template"),
+  // false (default) = última parte fala "Parte N." igual as demais; true = fala "Parte final.".
+  finalPartEnabled: boolean("final_part_enabled").notNull().default(false),
   aiProvider: text("ai_provider").notNull().default("gemini"),
   aiModel: text("ai_model").notNull(),
   cronPattern: text("cron_pattern"),

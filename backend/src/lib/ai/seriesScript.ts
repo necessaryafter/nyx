@@ -10,6 +10,7 @@ export interface SeriesScriptInput {
   minutesPerPart: number; // 0.5..10
   ctaTemplate?: string;
   finalCtaTemplate?: string;
+  finalPartEnabled?: boolean;
   avoidTitles?: string[];
   wordsPerMinute?: number;
 }
@@ -67,15 +68,16 @@ export function wordBudget(minutes: number, wpm: number, overheadWords: number):
  *
  * Regra (todas as partes 2..N, inclusive a última, repetem o título falado
  * junto com "Parte N."; só a última troca o CTA de "próxima parte" pelo CTA
- * final, que é opcional):
+ * final, que é opcional; se `finalPartEnabled` estiver ligado, a última parte
+ * fala "Parte final." em vez de "Parte N."):
  *   parte 1:        "{title} {body} {cta(1)}"              (sem cta se for parte única)
  *   parte 2..N-1:   "{title} Parte {n}. {body} {cta(n)}"
- *   parte N (final):"{title} Parte {N}. {body} {finalCta?}" (parte 1 se N=1: "{title} {body} {finalCta?}")
+ *   parte N (final):"{title} Parte {N ou "final"}. {body} {finalCta?}" (parte 1 se N=1: "{title} {body} {finalCta?}")
  */
 export function assembleParts(
   title: string,
   bodies: string[],
-  opts: { ctaTemplate: string; finalCtaTemplate?: string; targetWords: number[] },
+  opts: { ctaTemplate: string; finalCtaTemplate?: string; finalPartEnabled?: boolean; targetWords: number[] },
 ): SeriesScriptPart[] {
   const total = bodies.length;
   const cleanTitle = /[.!?]$/.test(title.trim()) ? title.trim() : `${title.trim()}.`;
@@ -86,7 +88,11 @@ export function assembleParts(
     const isLast = n === total;
     const body = rawBody.trim();
 
-    const opener = isFirst ? cleanTitle : `${cleanTitle} Parte ${n}.`;
+    const opener = isFirst
+      ? cleanTitle
+      : isLast && opts.finalPartEnabled
+        ? `${cleanTitle} Parte final.`
+        : `${cleanTitle} Parte ${n}.`;
     const cta = isLast
       ? (opts.finalCtaTemplate ? applyCta(opts.finalCtaTemplate, n, total) : "")
       : total > 1
@@ -217,7 +223,7 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
   let parts = assembleParts(
     raw.title,
     raw.parts.map((p) => p.text),
-    { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, targetWords: targetWordsPerPart },
+    { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, targetWords: targetWordsPerPart },
   );
 
   // Uma única retentativa, só para a primeira parte fora do orçamento.
@@ -230,7 +236,7 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
     parts = assembleParts(
       raw.title,
       raw.parts.map((p) => p.text),
-      { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, targetWords: targetWordsPerPart },
+      { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, targetWords: targetWordsPerPart },
     );
   }
 

@@ -88,6 +88,7 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         minutesPerPart: t.Number({ minimum: 0.5, maximum: 10 }),
         ctaTemplate: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
         finalCtaTemplate: t.Optional(t.String({ maxLength: 200 })),
+        finalPartEnabled: t.Optional(t.Boolean()),
         avoidTitles: t.Optional(t.Array(t.String())),
       }),
     },

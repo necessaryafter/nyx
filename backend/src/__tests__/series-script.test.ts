@@ -76,6 +76,27 @@ describe("assembleParts", () => {
     expect(parts[2]!.text).toBe("Eu sou o babaca? Parte 3. corpo 3 Foi isso, comenta o que achou.");
   });
 
+  it("finalPartEnabled=true: last part says 'Parte final.' instead of 'Parte N.'", () => {
+    const parts = assembleParts("Eu sou o babaca?", ["corpo 1", "corpo 2", "corpo 3"], {
+      ctaTemplate: "Curta e comente para a parte {next}.",
+      finalPartEnabled: true,
+      targetWords,
+    });
+
+    expect(parts[1]!.text).toBe("Eu sou o babaca? Parte 2. corpo 2 Curta e comente para a parte 3.");
+    expect(parts[2]!.text.startsWith("Eu sou o babaca? Parte final. corpo 3")).toBe(true);
+  });
+
+  it("finalPartEnabled=false (default): last part still says 'Parte N.'", () => {
+    const parts = assembleParts("Eu sou o babaca?", ["corpo 1", "corpo 2", "corpo 3"], {
+      ctaTemplate: "Curta e comente para a parte {next}.",
+      finalPartEnabled: false,
+      targetWords,
+    });
+
+    expect(parts[2]!.text.startsWith("Eu sou o babaca? Parte 3. corpo 3")).toBe(true);
+  });
+
   it("non-first parts repeat the title before 'Parte N.'", () => {
     const parts = assembleParts("T", ["a", "b"], {
       ctaTemplate: "Curta e comente para a parte {next}.",

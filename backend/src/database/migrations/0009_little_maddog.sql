@@ -1,0 +1,1 @@
+ALTER TABLE "schedulers" ADD COLUMN "final_part_enabled" boolean DEFAULT false NOT NULL;

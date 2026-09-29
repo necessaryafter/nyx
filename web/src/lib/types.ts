@@ -68,6 +68,7 @@ export interface Scheduler {
   randomizeAssetOrder: boolean;
   ctaTemplate: string;
   finalCtaTemplate: string | null;
+  finalPartEnabled: boolean;
   aiProvider: string;
   aiModel: string;
   cronPattern: string | null;

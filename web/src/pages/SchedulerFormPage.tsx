@@ -58,6 +58,7 @@ export function SchedulerFormPage() {
   const [minutesPerPart, setMinutesPerPart] = useState(1);
   const [ctaTemplate, setCtaTemplate] = useState("Curta e comente para a parte {next}.");
   const [finalCtaTemplate, setFinalCtaTemplate] = useState("");
+  const [finalPartEnabled, setFinalPartEnabled] = useState(false);
   const [aiModel, setAiModel] = useState("");
   const [cadence, setCadence] = useState<CadenceValue>({ kind: "manual" });
   const [runOnCreate, setRunOnCreate] = useState(!isEdit);
@@ -83,6 +84,7 @@ export function SchedulerFormPage() {
     if (s.minutesPerPart != null) setMinutesPerPart(s.minutesPerPart);
     setCtaTemplate(s.ctaTemplate);
     setFinalCtaTemplate(s.finalCtaTemplate ?? "");
+    setFinalPartEnabled(s.finalPartEnabled);
     setAiModel(s.aiModel);
     setCadence(cronToCadence(s.cronPattern));
   }, [existing.data]);
@@ -123,6 +125,7 @@ export function SchedulerFormPage() {
       ...(mode === "single" ? { totalMinutes } : { partsCount, minutesPerPart }),
       ctaTemplate,
       finalCtaTemplate: finalCtaTemplate.trim() || undefined,
+      finalPartEnabled,
       aiModel,
       cronPattern: cadenceToCron(cadence),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -154,6 +157,7 @@ export function SchedulerFormPage() {
         minutesPerPart: perPart,
         ctaTemplate,
         finalCtaTemplate: finalCtaTemplate.trim() || undefined,
+        finalPartEnabled,
       });
       setPreviewResult(result);
     } catch (err) {
@@ -306,7 +310,20 @@ export function SchedulerFormPage() {
           </Field>
 
           {mode === "parts" && (
-            <CtaInput label="CTA das partes intermediárias" value={ctaTemplate} onChange={setCtaTemplate} placeholder="Curta e comente para a parte {next}." />
+            <>
+              <CtaInput label="CTA das partes intermediárias" value={ctaTemplate} onChange={setCtaTemplate} placeholder="Curta e comente para a parte {next}." />
+              <label className="flex items-center gap-2 text-xs text-nyx-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={finalPartEnabled}
+                  onChange={(e) => setFinalPartEnabled(e.target.checked)}
+                />
+                Última parte fala "Parte final."
+              </label>
+              <p className="pl-5 text-[11px] text-nyx-text-muted">
+                Desmarcado = a última parte fala "Parte {"{N}"}." igual as demais.
+              </p>
+            </>
           )}
           <CtaInput label="CTA da última parte (opcional)" value={finalCtaTemplate} onChange={setFinalCtaTemplate} placeholder="Deixa nos comentários o que achou." />
 

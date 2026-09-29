@@ -322,6 +322,7 @@ const schedulerBaseSchema = z.object({
   randomizeAssetOrder: z.boolean().default(true),
   ctaTemplate: z.string().min(1).max(200).default("Curta e comente para a parte {next}."),
   finalCtaTemplate: z.string().max(200).optional(),
+  finalPartEnabled: z.boolean().default(false),
   aiModel: z.string().min(1).max(80),
   cronPattern: z.string().nullable().optional(),
   timezone: z.string().min(1).default("America/Sao_Paulo"),
