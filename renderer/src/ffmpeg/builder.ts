@@ -100,7 +100,7 @@ async function buildSceneTrack(plan: RenderPlan, workDir: string): Promise<strin
 }
 
 async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string> {
-  const { pool: { paths: mediaPool, mode: poolMode }, camera: { zoom, shake, transition }, audioPath, settings: { width, height } } = plan;
+  const { pool: { paths: mediaPool, mode: poolMode }, camera: { zoom, shake, transition }, audioPath, settings: { width, height, fps } } = plan;
 
   if (mediaPool.length === 0) throw new Error("builder: no media pool and no scenes");
 
@@ -108,9 +108,18 @@ async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string
   const resolvedPool = await Promise.all(
     mediaPool.map(async (fileName: string, index: number) => {
       if (!isImage(fileName)) {
-        // Trim video to audio length before any further processing (stream copy = instant)
+        // Reencoda pra resolução/fps comuns antes do concat — vídeos do pool podem vir
+        // com resolução, fps e codec diferentes (assets soltos, cada um de uma fonte).
+        // Concat com -c:v copy (sem normalizar) exige streams idênticos nos dois; sem
+        // isso, o ffmpeg gera DTS não-monotônico e a troca de um vídeo pro outro
+        // trava/corrompe. buildSceneTrack já fazia isso certo, aqui não.
         const trimPath = join(workDir, `pool-vid-${index}.mp4`);
-        await run(["-y", "-i", fileName, "-t", String(targetDuration), "-c:v", "copy", "-an", trimPath]);
+        await run([
+          "-y", "-i", fileName, "-t", String(targetDuration),
+          "-vf", `${buildScaleFilter("cover", width, height)},fps=${fps}`,
+          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-an",
+          trimPath,
+        ]);
         return trimPath;
       }
       const clipPath = join(workDir, `pool-img-${index}.mp4`);

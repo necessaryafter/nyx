@@ -64,6 +64,7 @@ Title: Subtitles
 ScriptType: v4.00+
 PlayResX: ${playResX}
 PlayResY: ${playResY}
+WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
