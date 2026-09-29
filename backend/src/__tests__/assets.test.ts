@@ -103,6 +103,43 @@ describe("GET /api/assets", () => {
   });
 });
 
+describe("PUT /api/assets/:id", () => {
+  it("renames the asset", async () => {
+    mockDatabase.select.mockReturnValue(chainResult([ASSET_ROW]));
+    mockDatabase.update.mockReturnValue(chainResult([{ ...ASSET_ROW, name: "novo-nome.mp4" }]));
+
+    const res = await app.handle(authedRequest(`/api/assets/${ASSET_ROW.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "novo-nome.mp4" }),
+    }));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.name).toBe("novo-nome.mp4");
+  });
+
+  it("returns 400 for an empty name", async () => {
+    const res = await app.handle(authedRequest(`/api/assets/${ASSET_ROW.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "" }),
+    }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when not found", async () => {
+    mockDatabase.select.mockReturnValue(chainResult([]));
+
+    const res = await app.handle(authedRequest("/api/assets/nonexistent", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "x" }),
+    }));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("DELETE /api/assets/:id", () => {
   it("returns 200 and deleted:true", async () => {
     mockDatabase.select.mockReturnValue(chainResult([ASSET_ROW]));

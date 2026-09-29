@@ -24,6 +24,11 @@ export const schedulers = pgTable("schedulers", {
   assetIds: jsonb("asset_ids").$type<string[]>().notNull().default([]),
   musicAssetIds: jsonb("music_asset_ids").$type<string[]>().notNull().default([]),
   mode: schedulerModeEnum("mode").notNull(),
+  // false = mesma lista de vídeos em todas as partes (comportamento de sempre);
+  // true = divide o pool entre as partes (round-robin) pra não repetir o mesmo vídeo.
+  noRepeatAssetsAcrossParts: boolean("no_repeat_assets_across_parts").notNull().default(false),
+  // true (default) = mantém o sorteio de sempre; false = ordem alfabética pelo nome do asset.
+  randomizeAssetOrder: boolean("randomize_asset_order").notNull().default(true),
   totalMinutes: numeric("total_minutes", { mode: "number" }),
   partsCount: integer("parts_count"),
   minutesPerPart: numeric("minutes_per_part", { mode: "number" }),

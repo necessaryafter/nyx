@@ -7,7 +7,7 @@ import { requireAuth } from "../auth/session";
 import { database } from "../database";
 import { assets } from "../database/schema/assets";
 import { storageClient as minio, presignClient, BUCKET_ASSETS } from "@nyx/shared";
-import { uploadAssetSchema, paginationSchema } from "../lib/schemas";
+import { uploadAssetSchema, renameAssetSchema, paginationSchema } from "../lib/schemas";
 import { ChunkedUploadError, startChunkedUpload, writeUploadChunk, completeChunkedUpload } from "../lib/chunkedUpload";
 
 interface UploadMeta {
@@ -192,6 +192,34 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
 
     const url = await presignClient.presignedGetObject(BUCKET_ASSETS, row.storageKey, 3600);
     return { url };
+  })
+
+  // Renomear asset
+  .put("/:id", async ({ params, body, session, set }) => {
+    const parsed = renameAssetSchema.safeParse(body);
+    if (!parsed.success) {
+      set.status = 400;
+      return { error: "invalid fields", details: parsed.error.flatten() };
+    }
+
+    const [row] = await database
+      .select()
+      .from(assets)
+      .where(and(eq(assets.id, params.id), eq(assets.userId, session.user.id)))
+      .limit(1);
+
+    if (!row) {
+      set.status = 404;
+      return { error: "asset not found" };
+    }
+
+    const [updated] = await database
+      .update(assets)
+      .set({ name: parsed.data.name })
+      .where(eq(assets.id, params.id))
+      .returning();
+
+    return updated;
   })
 
   // Delete asset

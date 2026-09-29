@@ -1,0 +1,2 @@
+ALTER TABLE "schedulers" ADD COLUMN "no_repeat_assets_across_parts" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "schedulers" ADD COLUMN "randomize_asset_order" boolean DEFAULT true NOT NULL;

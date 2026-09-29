@@ -12,7 +12,7 @@ export const VALID_GRAPH: GraphInput = {
   settings: { width: 1080, height: 1920, fps: 30, format: "mp4", musicVolume: 0.15 },
   nodes: [
     { id: "narration", kind: "source", type: "NarrationSource", config: { mode: "tts", text: "Hello world", provider: "talkify" } },
-    { id: "assets", kind: "source", type: "AssetSource", config: { assetIds: [UUID_ASSET], assetType: "video" } },
+    { id: "assets", kind: "source", type: "AssetSource", config: { assetIds: [UUID_ASSET], assetType: "video", mode: "random-loop" } },
     { id: "on-sentence", kind: "event", type: "OnSentence", config: {} },
     { id: "subtitle", kind: "action", type: "SetSubtitleStyle", config: { wordsPerGroup: 3 } },
     { id: "media", kind: "action", type: "SetMedia", config: { target: "main" } },

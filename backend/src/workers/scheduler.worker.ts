@@ -4,9 +4,10 @@ import { database } from "../database";
 import { schedulers, schedulerRuns } from "../database/schema/schedulers";
 import { jobs } from "../database/schema/jobs";
 import { templates } from "../database/schema/templates";
+import { assets } from "../database/schema/assets";
 import { audioQueue, renderQueue, audioQueueEvents, renderQueueEvents } from "../lib/queue";
 import { createDraftJob, startAudio, startRender } from "../lib/jobs.service";
-import { applySchedulerOverrides, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
+import { applySchedulerOverrides, planPartAssetIds, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
 import { estimateRun } from "../lib/scheduler/estimate";
 import { generateSeriesScript, type SeriesScript } from "../lib/ai/seriesScript";
 import { resolveGeminiKey } from "../lib/ai/gemini";
@@ -53,6 +54,7 @@ async function runOnePart(
     template: { id: string; graph: unknown };
     graph: ReturnType<typeof graphSchema.parse>;
     scheduler: typeof schedulers.$inferSelect;
+    partAssetIds: string[];
     title: string;
     partsTotal: number;
     provider: "talkify" | "edge";
@@ -62,7 +64,8 @@ async function runOnePart(
   },
 ): Promise<void> {
   const overriddenGraph = applySchedulerOverrides(ctx.graph, {
-    assetIds: ctx.scheduler.assetIds,
+    assetIds: ctx.partAssetIds,
+    assetMode: ctx.scheduler.randomizeAssetOrder ? "random-loop" : "sequential",
     musicAssetIds: ctx.scheduler.musicAssetIds,
     title: ctx.title,
     partIndex: part.index,
@@ -223,6 +226,18 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
   // execução nova, em vez de ficar congelado no template).
   const card: SchedulerCardContext = { ...script.card, ...randomEngagement() };
 
+  // Ordem sequencial precisa do nome de cada asset — só busca quando faz diferença.
+  let nameById: Map<string, string> | undefined;
+  if (!scheduler.randomizeAssetOrder && scheduler.assetIds.length > 0) {
+    const rows = await database.select({ id: assets.id, name: assets.name }).from(assets).where(inArray(assets.id, scheduler.assetIds));
+    nameById = new Map(rows.map((r) => [r.id, r.name]));
+  }
+  const assetPlan = planPartAssetIds(scheduler.assetIds, partsTotal, {
+    randomize: scheduler.randomizeAssetOrder,
+    noRepeatAcrossParts: scheduler.noRepeatAssetsAcrossParts,
+    nameById,
+  });
+
   let partsDone = 0;
 
   for (const part of script.parts) {
@@ -233,6 +248,7 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
         template,
         graph: graphParsed.data,
         scheduler,
+        partAssetIds: assetPlan[part.index - 1] ?? [],
         title: script.title,
         partsTotal,
         provider,

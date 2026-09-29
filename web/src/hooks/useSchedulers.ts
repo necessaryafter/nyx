@@ -20,6 +20,8 @@ export interface SchedulerInput {
   totalMinutes?: number;
   partsCount?: number;
   minutesPerPart?: number;
+  noRepeatAssetsAcrossParts?: boolean;
+  randomizeAssetOrder?: boolean;
   ctaTemplate?: string;
   finalCtaTemplate?: string;
   aiModel: string;

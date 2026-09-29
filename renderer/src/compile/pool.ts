@@ -23,5 +23,5 @@ export function extractMediaPool(
     return p ? [p] : [];
   });
 
-  return { paths, mode: "random-loop" };
+  return { paths, mode: node.config.mode ?? "random-loop" };
 }

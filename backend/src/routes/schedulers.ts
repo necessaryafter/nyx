@@ -93,6 +93,8 @@ export const schedulerRoutes = new Elysia({ prefix: "/api/schedulers" })
       totalMinutes: data.totalMinutes ?? null,
       partsCount: data.partsCount ?? null,
       minutesPerPart: data.minutesPerPart ?? null,
+      noRepeatAssetsAcrossParts: data.noRepeatAssetsAcrossParts,
+      randomizeAssetOrder: data.randomizeAssetOrder,
       ctaTemplate: data.ctaTemplate,
       finalCtaTemplate: data.finalCtaTemplate ?? null,
       aiProvider: "gemini",

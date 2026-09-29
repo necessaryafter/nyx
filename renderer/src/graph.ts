@@ -64,6 +64,7 @@ export interface NarrationSourceConfig {
 export interface AssetSourceConfig {
   assetIds: string[];
   assetType: "video" | "audio" | "image";
+  mode?: "random-loop" | "sequential";
 }
 
 export interface SceneSourceConfig {

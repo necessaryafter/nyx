@@ -50,6 +50,8 @@ export function SchedulerFormPage() {
   const [theme, setTheme] = useState("");
   const [assetIds, setAssetIds] = useState<string[]>([]);
   const [musicAssetIds, setMusicAssetIds] = useState<string[]>([]);
+  const [noRepeatAssetsAcrossParts, setNoRepeatAssetsAcrossParts] = useState(false);
+  const [randomizeAssetOrder, setRandomizeAssetOrder] = useState(true);
   const [mode, setMode] = useState<"single" | "parts">("parts");
   const [totalMinutes, setTotalMinutes] = useState(3);
   const [partsCount, setPartsCount] = useState(4);
@@ -73,6 +75,8 @@ export function SchedulerFormPage() {
     setTheme(s.theme);
     setAssetIds(s.assetIds);
     setMusicAssetIds(s.musicAssetIds);
+    setNoRepeatAssetsAcrossParts(s.noRepeatAssetsAcrossParts);
+    setRandomizeAssetOrder(s.randomizeAssetOrder);
     setMode(s.mode);
     if (s.totalMinutes != null) setTotalMinutes(s.totalMinutes);
     if (s.partsCount != null) setPartsCount(s.partsCount);
@@ -113,6 +117,8 @@ export function SchedulerFormPage() {
       theme: theme.trim(),
       assetIds,
       musicAssetIds,
+      noRepeatAssetsAcrossParts,
+      randomizeAssetOrder,
       mode,
       ...(mode === "single" ? { totalMinutes } : { partsCount, minutesPerPart }),
       ctaTemplate,
@@ -214,6 +220,30 @@ export function SchedulerFormPage() {
           <div className="grid grid-cols-2 gap-4">
             <Field label="Vídeos de fundo" hint="Vazio = usa os do template">
               <AssetPicker type="video" selectedIds={assetIds} onChange={setAssetIds} />
+              <div className="space-y-1.5 pt-1">
+                <label className="flex items-center gap-2 text-xs text-nyx-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={randomizeAssetOrder}
+                    onChange={(e) => setRandomizeAssetOrder(e.target.checked)}
+                  />
+                  Ordem aleatória
+                </label>
+                <p className="pl-5 text-[11px] text-nyx-text-muted">
+                  Desmarcado = ordem alfabética pelo nome do vídeo.
+                </p>
+                <label className="flex items-center gap-2 text-xs text-nyx-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={noRepeatAssetsAcrossParts}
+                    onChange={(e) => setNoRepeatAssetsAcrossParts(e.target.checked)}
+                  />
+                  Não repetir vídeo no mesmo lote
+                </label>
+                <p className="pl-5 text-[11px] text-nyx-text-muted">
+                  Divide os vídeos entre as partes da execução em vez de repetir a lista inteira em cada uma.
+                </p>
+              </div>
             </Field>
             <Field label="Trilha" hint="Vazio = usa a do template">
               <AssetPicker type="audio" selectedIds={musicAssetIds} onChange={setMusicAssetIds} />

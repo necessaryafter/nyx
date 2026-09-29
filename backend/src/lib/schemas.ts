@@ -5,6 +5,10 @@ export const uploadAssetSchema = z.object({
   type: z.enum(["video", "audio", "text", "image"]),
 });
 
+export const renameAssetSchema = z.object({
+  name: z.string().min(1).max(200),
+});
+
 const renderSettingsSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -28,6 +32,7 @@ const narrationSourceConfigSchema = z.object({
 const assetSourceConfigSchema = z.object({
   assetIds: z.array(z.string().uuid()),
   assetType: assetTypeSchema,
+  mode: z.enum(["random-loop", "sequential"]).default("random-loop"),
 });
 
 const sceneSourceConfigSchema = z.object({
@@ -313,6 +318,8 @@ const schedulerBaseSchema = z.object({
   totalMinutes: z.number().min(0.5).max(10).optional(),
   partsCount: z.number().int().min(2).max(10).optional(),
   minutesPerPart: z.number().min(0.5).max(10).optional(),
+  noRepeatAssetsAcrossParts: z.boolean().default(false),
+  randomizeAssetOrder: z.boolean().default(true),
   ctaTemplate: z.string().min(1).max(200).default("Curta e comente para a parte {next}."),
   finalCtaTemplate: z.string().max(200).optional(),
   aiModel: z.string().min(1).max(80),

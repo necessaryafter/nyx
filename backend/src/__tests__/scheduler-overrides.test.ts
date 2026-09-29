@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { applySchedulerOverrides, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
+import { applySchedulerOverrides, planPartAssetIds, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
 import { estimateRun } from "../lib/scheduler/estimate";
 import type { GraphInput } from "../lib/schemas";
 
@@ -23,7 +23,7 @@ function baseGraph(): GraphInput {
     settings: { width: 1080, height: 1920, fps: 30 },
     nodes: [
       { id: "narration", kind: "source", type: "NarrationSource", config: { mode: "job-input", provider: "edge" } },
-      { id: "bg", kind: "source", type: "AssetSource", config: { assetIds: [UUID_BG], assetType: "video" } },
+      { id: "bg", kind: "source", type: "AssetSource", config: { assetIds: [UUID_BG], assetType: "video", mode: "random-loop" } },
       { id: "music", kind: "source", type: "MusicSource", config: { assetIds: [UUID_MUSIC], mode: "random-loop" } },
       { id: "on-sentence", kind: "event", type: "OnSentence", config: {} },
       { id: "subtitle", kind: "action", type: "SetSubtitleStyle", config: { wordsPerGroup: 2 } },
@@ -44,6 +44,7 @@ describe("applySchedulerOverrides", () => {
   it("replaces the video/image AssetSource pool when assetIds is non-empty", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [UUID_NEW_BG],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "Um título",
       partIndex: 1,
@@ -55,9 +56,24 @@ describe("applySchedulerOverrides", () => {
     expect(bg?.type === "AssetSource" && bg.config.assetIds).toEqual([UUID_NEW_BG]);
   });
 
+  it("carries assetMode onto the AssetSource node config", () => {
+    const out = applySchedulerOverrides(baseGraph(), {
+      assetIds: [UUID_NEW_BG],
+      assetMode: "sequential",
+      musicAssetIds: [],
+      title: "T",
+      partIndex: 1,
+      partsTotal: 1,
+      card: SAMPLE_CARD,
+    });
+    const bg = out.nodes.find((n) => n.id === "bg");
+    expect(bg?.type === "AssetSource" && bg.config.mode).toBe("sequential");
+  });
+
   it("keeps the template's assets when assetIds is empty", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "T",
       partIndex: 1,
@@ -71,6 +87,7 @@ describe("applySchedulerOverrides", () => {
   it("replaces MusicSource assets independently of the background", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [UUID_NEW_MUSIC],
       title: "T",
       partIndex: 1,
@@ -84,6 +101,7 @@ describe("applySchedulerOverrides", () => {
   it("part 1 of a multi-part series keeps the plain title on the card", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "Um título",
       partIndex: 1,
@@ -97,6 +115,7 @@ describe("applySchedulerOverrides", () => {
   it("part 3 of a multi-part series appends '— Parte 3' to the card title", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "Um título",
       partIndex: 3,
@@ -111,6 +130,7 @@ describe("applySchedulerOverrides", () => {
   it("a single-part run (N=1) never appends '— Parte N'", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "Um título",
       partIndex: 1,
@@ -124,6 +144,7 @@ describe("applySchedulerOverrides", () => {
   it("applies the run's card identity (subreddit/username/flair/votes) onto the title card", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "T",
       partIndex: 1,
@@ -145,6 +166,7 @@ describe("applySchedulerOverrides", () => {
     };
     const out = applySchedulerOverrides(withTemplateCard, {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "T",
       partIndex: 1,
@@ -159,6 +181,7 @@ describe("applySchedulerOverrides", () => {
     const graph = baseGraph();
     const out = applySchedulerOverrides(graph, {
       assetIds: [],
+      assetMode: "random-loop",
       musicAssetIds: [],
       title: "T",
       partIndex: 1,
@@ -167,6 +190,36 @@ describe("applySchedulerOverrides", () => {
     });
     const subtitle = out.nodes.find((n) => n.id === "subtitle");
     expect(subtitle).toEqual(graph.nodes.find((n) => n.id === "subtitle"));
+  });
+});
+
+describe("planPartAssetIds", () => {
+  const A = "a0000000-0000-4000-8000-000000000001";
+  const B = "b0000000-0000-4000-8000-000000000001";
+  const C = "c0000000-0000-4000-8000-000000000001";
+  const names = new Map([[A, "banana.mp4"], [B, "abacaxi.mp4"], [C, "cereja.mp4"]]);
+
+  it("gives every part the full pool when noRepeatAcrossParts is false", () => {
+    const plan = planPartAssetIds([A, B, C], 3, { randomize: true, noRepeatAcrossParts: false });
+    expect(plan).toEqual([[A, B, C], [A, B, C], [A, B, C]]);
+  });
+
+  it("splits the pool round-robin across parts when noRepeatAcrossParts is true", () => {
+    const plan = planPartAssetIds([A, B, C], 2, { randomize: true, noRepeatAcrossParts: true });
+    expect(plan).toEqual([[A, C], [B]]);
+    // nenhum id aparece em mais de uma parte
+    const seen = new Set<string>();
+    for (const part of plan) for (const id of part) expect(seen.has(id) ? "repeated" : seen.add(id)).not.toBe("repeated");
+  });
+
+  it("sorts by asset name when randomize is false", () => {
+    const plan = planPartAssetIds([A, B, C], 1, { randomize: false, noRepeatAcrossParts: false, nameById: names });
+    expect(plan).toEqual([[B, A, C]]); // abacaxi, banana, cereja
+  });
+
+  it("returns empty arrays for every part when the pool is empty", () => {
+    const plan = planPartAssetIds([], 3, { randomize: true, noRepeatAcrossParts: true });
+    expect(plan).toEqual([[], [], []]);
   });
 });
 
