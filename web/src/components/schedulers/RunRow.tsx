@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Download, Loader2, RotateCcw, Copy, Check, ExternalLink } from "lucide-react";
+import { ChevronDown, Download, FolderDown, Loader2, RotateCcw, Copy, Check, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
@@ -69,9 +69,10 @@ function PartRow({ part }: { part: SchedulerRun["parts"][number] }) {
   );
 }
 
-export function RunRow({ run }: { run: SchedulerRun }) {
+export function RunRow({ run, schedulerId }: { run: SchedulerRun; schedulerId: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const readyParts = run.parts.filter((p) => p.status === "done" && p.hasVideo).length;
 
   function copyError() {
     if (!run.error) return;
@@ -110,6 +111,17 @@ export function RunRow({ run }: { run: SchedulerRun }) {
                 {copied ? "Copiado!" : "Copiar erro"}
               </Button>
             </div>
+          )}
+
+          {readyParts > 1 && (
+            <a
+              href={`/api/schedulers/${schedulerId}/runs/${run.id}/download`}
+              download
+              className="inline-flex items-center gap-1.5 text-xs text-nyx-cyan-500 hover:underline"
+            >
+              <FolderDown className="h-3.5 w-3.5" />
+              Baixar lote (.zip) — parte_1.mp4, parte_2.mp4...
+            </a>
           )}
 
           <div className="space-y-2">

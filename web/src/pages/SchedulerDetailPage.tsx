@@ -101,7 +101,7 @@ export function SchedulerDetailPage() {
           ) : (
             <div className="space-y-2">
               {s.runs.map((run) => (
-                <RunRow key={run.id} run={run} />
+                <RunRow key={run.id} run={run} schedulerId={s.id} />
               ))}
             </div>
           )}

@@ -1,11 +1,14 @@
 import { Elysia } from "elysia";
 import { randomUUID } from "crypto";
+import { Readable } from "stream";
+import { ZipArchive } from "archiver";
 import { eq, and, desc, count, inArray } from "drizzle-orm";
 import { requireAuth } from "../auth/session";
 import { database } from "../database";
 import { schedulers, schedulerRuns } from "../database/schema/schedulers";
 import { templates } from "../database/schema/templates";
 import { jobs } from "../database/schema/jobs";
+import { storageClient as minio, BUCKET_VIDEOS, logger } from "@nyx/shared";
 import {
   createSchedulerSchema,
   updateSchedulerSchema,
@@ -24,6 +27,17 @@ type SchedulerRow = typeof schedulers.$inferSelect;
 function toSchedulerDTO(row: SchedulerRow, templateName: string | null) {
   const { userId: _userId, ...rest } = row;
   return { ...rest, templateName };
+}
+
+/** "Eu descobri que..." -> "eu_descobri_que" — nome de arquivo seguro pro .zip do lote. */
+function slugifyFilename(text: string, maxLength = 60): string {
+  const slug = text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // remove acentos
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return slug.slice(0, maxLength) || "lote";
 }
 
 async function assertNoSceneSource(templateId: string, userId: string) {
@@ -270,6 +284,53 @@ export const schedulerRoutes = new Elysia({ prefix: "/api/schedulers" })
         .sort((a, b) => (a.partIndex ?? 0) - (b.partIndex ?? 0))
         .map((p) => ({ jobId: p.jobId, partIndex: p.partIndex, status: p.status, durationSeconds: p.durationSeconds, hasVideo: !!p.videoKey })),
     };
+  })
+
+  // ── Baixa todas as partes prontas de uma execução como .zip (parte_1.mp4, parte_2.mp4, ...) ──
+  .get("/:id/runs/:runId/download", async ({ params, session, set }) => {
+    const userId = session.user.id;
+
+    const [run] = await database
+      .select({ id: schedulerRuns.id, title: schedulerRuns.title })
+      .from(schedulerRuns)
+      .where(and(eq(schedulerRuns.id, params.runId), eq(schedulerRuns.schedulerId, params.id), eq(schedulerRuns.userId, userId)))
+      .limit(1);
+
+    if (!run) {
+      set.status = 404;
+      return { error: "run not found" };
+    }
+
+    const parts = await database
+      .select({ partIndex: jobs.partIndex, status: jobs.status, videoKey: jobs.videoKey })
+      .from(jobs)
+      .where(eq(jobs.runId, run.id));
+
+    const ready = parts
+      .filter((p) => p.status === "done" && !!p.videoKey)
+      .sort((a, b) => (a.partIndex ?? 0) - (b.partIndex ?? 0));
+
+    if (ready.length === 0) {
+      set.status = 400;
+      return { error: "nenhuma parte pronta pra download" };
+    }
+
+    // zlib level 0 = sem compressão extra — o mp4 já vem comprimido, o zip só embrulha.
+    const archive = new ZipArchive({ zlib: { level: 0 } });
+    archive.on("error", (err: Error) => logger.error({ runId: run.id, err: err.message }, "batch download: erro montando zip"));
+    for (const p of ready) {
+      const stream = await minio.getObject(BUCKET_VIDEOS, p.videoKey!);
+      archive.append(stream, { name: `parte_${p.partIndex}.mp4` });
+    }
+    archive.finalize();
+
+    const filename = `${slugifyFilename(run.title ?? "lote")}.zip`;
+    return new Response(Readable.toWeb(archive) as unknown as ReadableStream, {
+      headers: {
+        "content-type": "application/zip",
+        "content-disposition": `attachment; filename="${filename}"`,
+      },
+    });
   })
 
   // ── Atualiza scheduler ──

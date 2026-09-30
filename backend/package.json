@@ -11,9 +11,11 @@
     "test:watch": "bun test --watch"
   },
   "dependencies": {
-    "@nyx/shared": "workspace:*",
     "@elysiajs/cors": "^1.4.1",
+    "@google/genai": "^1.5.0",
+    "@nyx/shared": "workspace:*",
     "@sentry/node": "^10.43.0",
+    "archiver": "^8.0.0",
     "better-auth": "^1.4.20",
     "bullmq": "^5.70.1",
     "drizzle-orm": "^0.45.1",
@@ -22,10 +24,10 @@
     "minio": "^8.0.7",
     "pino": "^10.3.1",
     "postgres": "^3.4.8",
-    "zod": "^4.3.6",
-    "@google/genai": "^1.5.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/node": "^25.3.2",
     "bun-types": "latest",
     "drizzle-kit": "^0.31.9",
