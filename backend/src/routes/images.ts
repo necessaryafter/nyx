@@ -8,6 +8,7 @@ import { jobs } from "../database/schema/jobs";
 import { storageClient as minio, BUCKET_ASSETS } from "@nyx/shared";
 import { generateImage } from "../lib/freegen";
 import { GoogleGenAI } from "@google/genai";
+import { resolveGeminiKey } from "../lib/ai/gemini";
 
 export const imageRoutes = new Elysia({ prefix: "/api/jobs" })
   .use(requireAuth)
@@ -74,10 +75,10 @@ export const imageRoutes = new Elysia({ prefix: "/api/jobs" })
   .post(
     "/:id/slots/generate-prompts",
     async ({ params, session, set }) => {
-      const apiKey = process.env.GOOGLE_AI_STUDIO_KEY;
+      const apiKey = await resolveGeminiKey(session.user.id);
       if (!apiKey) {
         set.status = 503;
-        return { error: "GOOGLE_AI_STUDIO_KEY não configurada" };
+        return { error: "Configure sua chave do Gemini em Configurações → Integrações" };
       }
 
       const [job] = await database
