@@ -12,6 +12,10 @@ export interface TTSResult {
  */
 export function sanitizeNarrationText(text: string): string {
   return text
+    // Separadores que o Gemini devolve em volta do roteiro (---ROTEIRO---, ROTEIRO ==,
+    // == FIM ==...). Exige "--"/"==" do lado pra não comer "fim" de uma frase normal.
+    .replace(/[-=]{2,}[ \t]*(?:ROTEIRO|FIM)\b[ \t]*(?:[-=]{2,})?|\b(?:ROTEIRO|FIM)[ \t]*[-=]{2,}/gi, "")
+    .replace(/^[ \t]*(?:ROTEIRO|FIM)[ \t]*:?[ \t]*$/gm, "") // linha só com o marcador, em maiúsculas
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // [texto](url) -> texto
     .replace(/^[ \t]*#{1,6}[ \t]+/gm, "") // # header
     .replace(/^[ \t]*>[ \t]?/gm, "") // > blockquote

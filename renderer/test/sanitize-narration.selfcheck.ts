@@ -36,6 +36,14 @@ function main() {
     "texto normal sem símbolo não muda",
   );
 
+  // Separadores do Gemini em volta do roteiro — eram lidos no áudio e na legenda.
+  assert(sanitizeNarrationText("---ROTEIRO---\nOi.\n---FIM---").trim() === "Oi.", "---ROTEIRO--- / ---FIM---");
+  assert(sanitizeNarrationText("ROTEIRO ==\nOi.\nFIM ==").trim() === "Oi.", "ROTEIRO == / FIM ==");
+  assert(sanitizeNarrationText("== ROTEIRO ==\nOi.\n== FIM ==").trim() === "Oi.", "== ROTEIRO == / == FIM ==");
+  assert(sanitizeNarrationText("ROTEIRO:\nOi.\nFIM").trim() === "Oi.", "linha só com ROTEIRO: / FIM");
+  assert(sanitizeNarrationText("Esse foi o fim da nossa história.") === "Esse foi o fim da nossa história.", "\"fim\" normal na frase fica");
+  assert(sanitizeNarrationText("Fim.") === "Fim.", "\"Fim.\" como frase final fica");
+
   console.log("\nsanitize-narration.selfcheck: PASS");
 }
 
