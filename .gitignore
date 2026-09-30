@@ -87,3 +87,4 @@ renders/
 .cache/
 .parcel-cache/
 *.lnk
+.logs/

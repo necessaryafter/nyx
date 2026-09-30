@@ -40,9 +40,9 @@ export async function buildVideo(plan: RenderPlan, workDir: string): Promise<str
     "-i", mixedAudio,
     "-map", "0:v:0",
     "-map", "1:a:0",
-    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+    // composite() já encodou o vídeo final — aqui só junta o áudio, sem recodificar.
+    "-c:v", "copy",
     "-c:a", "aac",
-    "-pix_fmt", "yuv420p",
     "-movflags", "+faststart",
     "-shortest",
     outFile,
@@ -99,95 +99,115 @@ async function buildSceneTrack(plan: RenderPlan, workDir: string): Promise<strin
   return outFile;
 }
 
+export interface PoolSegment { index: number; seconds: number }
+
+// Monta a sequência de clipes que cobre targetSec. Aleatório = "saco embaralhado":
+// usa todos os vídeos uma vez antes de repetir qualquer um. Cada segmento só dura o
+// que falta — o último é cortado. overlapSec = duração da transição (xfade come isso
+// de cada troca, então cada clipe depois do primeiro precisa durar overlapSec a mais).
+export function planPoolSegments(
+  durations: number[],
+  targetSec: number,
+  mode: "random-loop" | "sequential",
+  overlapSec = 0,
+  random: () => number = Math.random,
+): PoolSegment[] {
+  const usable = durations.flatMap((d, i) => (d > overlapSec + 0.1 ? [i] : []));
+  if (usable.length === 0) throw new Error("builder: nenhum vídeo do pool tem duração utilizável");
+
+  const segments: PoolSegment[] = [];
+  let covered = 0;
+  let bag: number[] = [];
+
+  while (covered < targetSec - 0.01) {
+    if (bag.length === 0) {
+      bag = [...usable];
+      if (mode === "random-loop") {
+        for (let i = bag.length - 1; i > 0; i--) {
+          const j = Math.floor(random() * (i + 1));
+          [bag[i], bag[j]] = [bag[j]!, bag[i]!];
+        }
+        // Na virada do saco, não deixa o mesmo vídeo aparecer duas vezes seguidas.
+        const last = segments.at(-1)?.index;
+        if (bag.length > 1 && bag[0] === last) [bag[0], bag[1]] = [bag[1]!, bag[0]!];
+      }
+    }
+
+    const index = bag.shift()!;
+    const overlap = segments.length === 0 ? 0 : overlapSec;
+    const seconds = Math.min(durations[index]!, targetSec - covered + overlap);
+    segments.push({ index, seconds });
+    covered += seconds - overlap;
+  }
+
+  return segments;
+}
+
 async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string> {
-  const { pool: { paths: mediaPool, mode: poolMode }, camera: { zoom, shake, transition }, audioPath, settings: { width, height, fps } } = plan;
+  const { pool: { paths: mediaPool, mode: poolMode, speed: poolSpeed = 1 }, camera: { zoom, shake, transition }, audioPath, settings: { width, height, fps } } = plan;
 
   if (mediaPool.length === 0) throw new Error("builder: no media pool and no scenes");
 
   const targetDuration = await probeDuration(audioPath);
-  const resolvedPool = await Promise.all(
-    mediaPool.map(async (fileName: string, index: number) => {
-      if (!isImage(fileName)) {
-        // Reencoda pra resolução/fps comuns antes do concat — vídeos do pool podem vir
-        // com resolução, fps e codec diferentes (assets soltos, cada um de uma fonte).
-        // Concat com -c:v copy (sem normalizar) exige streams idênticos nos dois; sem
-        // isso, o ffmpeg gera DTS não-monotônico e a troca de um vídeo pro outro
-        // trava/corrompe. buildSceneTrack já fazia isso certo, aqui não.
-        const trimPath = join(workDir, `pool-vid-${index}.mp4`);
-        await run([
-          "-y", "-i", fileName, "-t", String(targetDuration),
-          "-vf", `${buildScaleFilter("cover", width, height)},fps=${fps}`,
-          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-an",
-          trimPath,
-        ]);
-        return trimPath;
-      }
-      const clipPath = join(workDir, `pool-img-${index}.mp4`);
-      const clipDur = targetDuration / mediaPool.filter((p: string) => isImage(p)).length;
-      const frames = Math.ceil(clipDur * 30);
+  const imageCount = mediaPool.filter(isImage).length;
 
-      await run([
-        "-y", "-loop", "1", "-i", fileName,
-        "-vf", `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='min(zoom+0.0003,1.05)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${width}x${height}:fps=30`,
-        "-t", String(clipDur),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-an",
-        clipPath,
-      ]);
-
-      return clipPath;
-    }),
+  // Duração de cada fonte já na timeline final (vídeo acelerado dura menos). Só ffprobe,
+  // nada é decodificado aqui.
+  const durations = await Promise.all(
+    mediaPool.map(async (p) => (isImage(p) ? targetDuration / imageCount : (await probeDuration(p)) / poolSpeed)),
   );
 
-  const durations = await Promise.all(resolvedPool.map((p) => probeDuration(p)));
+  const overlap = transition && mediaPool.length > 1 ? transition.duration : 0;
+  const segments = planPoolSegments(durations, targetDuration, poolMode, overlap);
 
-  const playlist: string[] = [];
-  let total = 0;
-  if (poolMode === "random-loop") {
-    while (total < targetDuration) {
-      const idx = Math.floor(Math.random() * resolvedPool.length);
-      playlist.push(resolvedPool[idx]!);
-      total += durations[idx]!;
+  const speedFilter = poolSpeed !== 1 ? `setpts=PTS/${poolSpeed},` : "";
+  const effectFilter = zoomShakeFilter(zoom, shake);
+  const effect = effectFilter ? `,${effectFilter}` : "";
+
+  // Um clipe por vez, só com a duração que vai ser usada. Normaliza resolução/fps
+  // (concat -c copy exige streams idênticos) e já aplica zoom/shake no mesmo passe.
+  // Sequencial de propósito: N encodes 1080x1920 em paralelo travavam a máquina.
+  const encoded = new Map<string, string>();
+  const clips: string[] = [];
+  for (const { index, seconds } of segments) {
+    const key = `${index}:${seconds.toFixed(3)}`;
+    let clipPath = encoded.get(key);
+    if (!clipPath) {
+      clipPath = join(workDir, `pool-seg-${encoded.size}.mp4`);
+      const src = mediaPool[index]!;
+      if (isImage(src)) {
+        const frames = Math.ceil(seconds * fps);
+        await run([
+          "-y", "-loop", "1", "-i", src,
+          "-vf", `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},zoompan=z='min(zoom+0.0003,1.05)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${width}x${height}:fps=${fps}${effect}`,
+          "-t", String(seconds),
+          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-an",
+          clipPath,
+        ]);
+      } else {
+        await run([
+          "-y", "-i", src,
+          "-vf", `${speedFilter}${buildScaleFilter("cover", width, height)},fps=${fps}${effect}`,
+          "-t", String(seconds),
+          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-an",
+          clipPath,
+        ]);
+      }
+      encoded.set(key, clipPath);
     }
-  } else {
-    let i = 0;
-
-    while (total < targetDuration) {
-      const index = i % resolvedPool.length;
-
-      playlist.push(resolvedPool[index]!);
-      total += durations[index]!;
-      i++;
-    }
+    clips.push(clipPath);
   }
 
-  // Apply zoom/shake per unique clip, capped at targetDuration — no point encoding
-  // beyond what the final output uses (e.g. a 50-min source for a 5-min audio).
-  let processedPlaylist = playlist;
-  if (zoom || shake) {
-    const vf = zoomShakeFilter(zoom, shake);
-    const uniqueClips = [...new Set(playlist)];
-    const processedMap = new Map<string, string>();
-    await Promise.all(
-      uniqueClips.map(async (clip, i) => {
-        const out = join(workDir, `pool-clip-${i}.mp4`);
-        await run(["-y", "-i", clip, "-vf", vf, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-an", out]);
-        processedMap.set(clip, out);
-      }),
-    );
-    processedPlaylist = playlist.map((clip) => processedMap.get(clip)!);
-  }
+  logger.info({ segments: segments.length, uniqueClips: encoded.size, targetDuration }, "builder: pool segments encoded");
 
   const outFile = join(workDir, "base-pool.mp4");
 
-  if (transition && processedPlaylist.length > 1) {
-    await applyTransitions(processedPlaylist, transition, outFile, targetDuration);
+  if (overlap > 0 && transition) {
+    await applyTransitions(clips, transition, outFile, targetDuration);
   } else {
     const concatFile = join(workDir, "pool-concat.txt");
-
-    await writeFile(concatFile, processedPlaylist.map((p) => `file '${p}'`).join("\n"));
-    const args = ["-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c:v", "copy", "-an"];
-    args.push("-t", String(targetDuration), outFile);
-    await run(args);
+    await writeFile(concatFile, clips.map((p) => `file '${p}'`).join("\n"));
+    await run(["-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c:v", "copy", "-an", "-t", String(targetDuration), outFile]);
   }
 
   return outFile;
@@ -221,7 +241,7 @@ async function composite(
     await run([
       "-y", "-i", baseVideo,
       "-vf", scaleFilter,
-      "-c:v", "libx264", "-preset", "fast", "-an",
+      "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p", "-an",
       outFile,
     ]);
 
@@ -240,7 +260,7 @@ async function composite(
     ...inputArgs,
     "-filter_complex", fullFilter,
     "-map", `[${finalLabel}]`,
-    "-c:v", "libx264", "-preset", "fast", "-an",
+    "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p", "-an",
     outFile,
   ]);
 

@@ -54,7 +54,10 @@ export function buildOverlayFilterChain(
   const inputArgs: string[] = [];
   for (const overlay of overlays) inputArgs.push("-i", overlay.clipPath);
   // O card é PNG com alpha (cantos arredondados): entra direto, sem passar pelo clip libx264 que perderia a transparência.
-  if (card) inputArgs.push("-loop", "1", "-framerate", "30", "-t", String(card.endSeconds), "-i", card.path);
+  // PNG entra como imagem única e é repetido pelo filtro loop (ver abaixo). NÃO usar
+  // "-loop 1" no input: no ffmpeg 7 isso deadlocka o overlay no meio do vídeo (trava
+  // sempre no mesmo frame, 0% CPU, ignora SIGTERM) e ainda deixa o encode ~50x mais lento.
+  if (card) inputArgs.push("-i", card.path);
 
   const filterParts: string[] = [];
   let currentLabel = "0:v";
@@ -81,10 +84,11 @@ export function buildOverlayFilterChain(
   }
 
   if (card) {
+    // Sem fade-in: o card já está inteiro no frame 0. Só some com fade no final.
     const fade = 0.2;
     const outLabel = subtitleFilter ? "v_card" : "v_final";
     filterParts.push(
-      `[${overlays.length + 1}:v]format=rgba,fade=t=in:st=0:d=${fade}:alpha=1,fade=t=out:st=${Math.max(0, card.endSeconds - fade)}:d=${fade}:alpha=1[card]`,
+      `[${overlays.length + 1}:v]format=rgba,loop=loop=${Math.max(0, Math.ceil(card.endSeconds * 30) - 1)}:size=1,setpts=N/30/TB,fade=t=out:st=${Math.max(0, card.endSeconds - fade)}:d=${fade}:alpha=1[card]`,
     );
     filterParts.push(
       `[${currentLabel}][card]overlay=${card.x}:${card.y}:enable='between(t,${card.startSeconds},${card.endSeconds})'[${outLabel}]`,

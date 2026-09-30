@@ -7,7 +7,7 @@ import { mkdtemp, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { probeDuration } from "../src/ffmpeg/probe";
-import { buildScaleFilter } from "../src/ffmpeg/builder";
+import { buildScaleFilter, planPoolSegments } from "../src/ffmpeg/builder";
 import { run } from "../src/ffmpeg/runner";
 
 function assert(cond: boolean, msg: string) {
@@ -27,7 +27,32 @@ function ffmpegCollectStderr(args: string[]): Promise<string> {
   });
 }
 
+function checkPlanner() {
+  // 4 vídeos de 30s, áudio de 200s: aleatório usa os 4 antes de repetir qualquer um.
+  const segs = planPoolSegments([30, 30, 30, 30], 200, "random-loop");
+  const total = segs.reduce((s, x) => s + x.seconds, 0);
+  assert(Math.abs(total - 200) < 0.01, `segmentos cobrem exatamente o áudio (veio ${total}s)`);
+  assert(segs.at(-1)!.seconds === 20, "último segmento é cortado no que falta (20s)");
+  for (let i = 0; i + 4 <= segs.length; i += 4) {
+    assert(new Set(segs.slice(i, i + 4).map((s) => s.index)).size === 4, `volta ${i / 4 + 1}: usa os 4 vídeos sem repetir`);
+  }
+  assert(segs.every((s, i) => i === 0 || s.index !== segs[i - 1]!.index), "nunca o mesmo vídeo duas vezes seguidas");
+
+  // Vídeo maior que o áudio: só 1 segmento, cortado.
+  const one = planPoolSegments([500, 500], 200, "random-loop");
+  assert(one.length === 1 && one[0]!.seconds === 200, "vídeo longo: um só segmento de 200s, sem puxar outro");
+
+  // Sequencial mantém a ordem.
+  assert(planPoolSegments([10, 10, 10], 25, "sequential").map((s) => s.index).join() === "0,1,2", "sequencial segue a ordem");
+
+  // Com transição de 1s, cada troca come 1s: soma - overlaps = alvo.
+  const tr = planPoolSegments([30, 30], 100, "sequential", 1);
+  const eff = tr.reduce((s, x) => s + x.seconds, 0) - (tr.length - 1);
+  assert(Math.abs(eff - 100) < 0.01, `com transição, duração efetiva bate com o áudio (veio ${eff}s)`);
+}
+
 async function main() {
+  checkPlanner();
   const workDir = await mkdtemp(join(tmpdir(), "pool-track-check-"));
   try {
     const a = join(workDir, "a.mp4"); // 640x480 @30fps
