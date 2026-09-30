@@ -21,7 +21,7 @@ export class TalkifyProvider extends BaseTTSProvider {
     this.apiKey = apiKey;
   }
 
-  async synthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult> {
+  protected async doSynthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult> {
     if (!text) throw new Error("TalkifyProvider: text is required");
 
     const jobId = await this.createJob(text, config);

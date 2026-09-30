@@ -23,7 +23,7 @@ const SILENCE_MS = 400;
 export class EdgeTTSProvider extends BaseTTSProvider {
   readonly name = "edge";
 
-  async synthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult> {
+  protected async doSynthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult> {
     if (!text) throw new Error("EdgeTTSProvider: text is required");
 
     const voice = config.voice ?? DEFAULT_VOICE;

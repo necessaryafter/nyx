@@ -20,7 +20,7 @@ export interface ScriptSegment {
 export class CustomAudioProvider extends BaseTTSProvider {
   readonly name = "custom";
 
-  async synthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult> {
+  protected async doSynthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult> {
     const assetId = config.voice;
     if (!assetId) {
       throw new Error("CustomAudioProvider: config.voice deve conter o assetId do áudio");

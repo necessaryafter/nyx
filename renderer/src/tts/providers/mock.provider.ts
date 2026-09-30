@@ -9,7 +9,7 @@ import { BaseTTSProvider, type TTSResult } from "../base.provider";
 export class MockTTSProvider extends BaseTTSProvider {
   readonly name = "mock";
 
-  async synthesize(text: string | undefined, _config: TTSConfig): Promise<TTSResult> {
+  protected async doSynthesize(text: string | undefined, _config: TTSConfig): Promise<TTSResult> {
     const words = (text ?? "test audio").split(/\s+/).filter(Boolean);
     const durationSec = Math.max(words.length * 0.5, 1);
 

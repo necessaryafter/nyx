@@ -10,7 +10,8 @@
     "test:title-card": "bun run test/titleCard.selfcheck.ts",
     "test:pool-track": "bun run test/pool-track.selfcheck.ts",
     "test:edge-tts-chunking": "bun run test/edge-tts-chunking.selfcheck.ts",
-    "test:scene-detection": "bun run test/scene-detection.selfcheck.ts"
+    "test:scene-detection": "bun run test/scene-detection.selfcheck.ts",
+    "test:sanitize-narration": "bun run test/sanitize-narration.selfcheck.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

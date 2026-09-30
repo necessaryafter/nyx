@@ -5,7 +5,25 @@ export interface TTSResult {
   wordTimestamps: WordTimestamp[];
 }
 
+/**
+ * Remove marcação markdown do texto de narração antes do TTS — só decoração (o TTS
+ * lê "*" como "asterisco"), nunca pontuação de verdade: "?", "!", "." etc. mudam a
+ * entonação da fala e têm que passar intactos.
+ */
+export function sanitizeNarrationText(text: string): string {
+  return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // [texto](url) -> texto
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, "") // # header
+    .replace(/^[ \t]*>[ \t]?/gm, "") // > blockquote
+    .replace(/[*_`~]/g, ""); // * ** _ __ ` ~~
+}
+
 export abstract class BaseTTSProvider {
   abstract readonly name: string;
-  abstract synthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult>;
+
+  async synthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult> {
+    return this.doSynthesize(text !== undefined ? sanitizeNarrationText(text) : text, config);
+  }
+
+  protected abstract doSynthesize(text: string | undefined, config: TTSConfig): Promise<TTSResult>;
 }
