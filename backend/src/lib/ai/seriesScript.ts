@@ -12,6 +12,7 @@ export interface SeriesScriptInput {
   finalCtaTemplate?: string;
   finalPartEnabled?: boolean;
   avoidTitles?: string[];
+  avoidPremises?: string[]; // começo das histórias já usadas (mesma ordem de avoidTitles)
   wordsPerMinute?: number;
 }
 
@@ -56,6 +57,33 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function titleTokens(title: string): Set<string> {
+  const words = title
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4); // ignora "a", "que", "meu"... só palavras com peso
+  return new Set(words);
+}
+
+/**
+ * Título igual ou quase igual a algum já usado (>= 60% das palavras relevantes em comum).
+ * O Gemini ignora "não repita" no prompt com frequência — isso aqui é a checagem de verdade.
+ */
+export function findRepeatedTitle(title: string, usedTitles: string[]): string | undefined {
+  const a = titleTokens(title);
+  if (a.size === 0) return undefined;
+  return usedTitles.find((used) => {
+    const b = titleTokens(used);
+    if (b.size === 0) return false;
+    let common = 0;
+    for (const w of a) if (b.has(w)) common++;
+    return common / (a.size + b.size - common) >= 0.6;
+  });
+}
+
 /** Palavras disponíveis pro corpo depois de descontar abertura + CTA. Nunca menos que 1. */
 export function wordBudget(minutes: number, wpm: number, overheadWords: number): number {
   return Math.max(1, Math.round(minutes * wpm) - overheadWords);
@@ -86,7 +114,8 @@ export function assembleParts(
     const n = i + 1;
     const isFirst = n === 1;
     const isLast = n === total;
-    const body = rawBody.trim();
+    // O BASE_SYSTEM_PROMPT pede "---ROTEIRO--- ... ---FIM---" e o Gemini às vezes põe isso dentro do JSON.
+    const body = rawBody.replace(/[-=]{2,}[ \t]*(?:ROTEIRO|FIM)\b[ \t]*(?:[-=]{2,})?|\b(?:ROTEIRO|FIM)[ \t]*[-=]{2,}/gi, "").trim();
 
     const opener = isFirst
       ? cleanTitle
@@ -171,6 +200,7 @@ async function callGemini(
   input: SeriesScriptInput,
   targetWordsPerPart: number[],
   retryPart?: { index: number; words: number },
+  rejectedTitles: string[] = [],
 ): Promise<RawSeries> {
   const ai = createGemini(input.apiKey);
 
@@ -178,15 +208,26 @@ async function callGemini(
     .map((w, i) => `- Parte ${i + 1}: ~${w} palavras`)
     .join("\n");
 
-  const avoidBlock = input.avoidTitles?.length
-    ? `\nNão repita estas histórias já usadas antes (título ou tema muito parecido): ${input.avoidTitles.join(" | ")}`
-    : "";
 
   const retryBlock = retryPart
     ? `\nAjuste SÓ a parte ${retryPart.index} para ficar com aproximadamente ${retryPart.words} palavras, mantendo o mesmo conteúdo e o mesmo título; devolva o JSON completo de novo, com todas as partes.`
     : "";
 
-  const systemInstruction = `${BASE_SYSTEM_PROMPT}\n\n${SERIES_RULES}\n\nORÇAMENTO DE PALAVRAS POR PARTE:\n${budgetLines}${avoidBlock}${retryBlock}`;
+  const systemInstruction = `${BASE_SYSTEM_PROMPT}\n\n${SERIES_RULES}\n\nORÇAMENTO DE PALAVRAS POR PARTE:\n${budgetLines}${retryBlock}`;
+
+  // Vai junto do tema (mensagem do usuário), não no fim do system prompt — lá o modelo
+  // ignorava e, com o mesmo tema toda vez, voltava sempre pra mesma história.
+  const used = input.avoidTitles ?? [];
+  const usedLines = used.map((t, i) => {
+    const premise = input.avoidPremises?.[i]?.replace(/\s+/g, " ").trim().slice(0, 200);
+    return premise ? `- "${t}" — começa assim: ${premise}` : `- "${t}"`;
+  });
+  const avoidBlock = usedLines.length
+    ? `\n\nHISTÓRIAS JÁ PUBLICADAS NESTA SÉRIE (PROIBIDO repetir — nem o título, nem a mesma premissa, os mesmos personagens ou a mesma reviravolta com outras palavras). Crie uma história NOVA e claramente diferente de todas estas:\n${usedLines.join("\n")}`
+    : "";
+  const rejectedBlock = rejectedTitles.length
+    ? `\n\nVocê acabou de devolver uma história repetida (${rejectedTitles.map((t) => `"${t}"`).join(", ")}). Invente outra premissa do zero.`
+    : "";
 
   const response = await ai.models.generateContent({
     model: input.model,
@@ -196,7 +237,7 @@ async function callGemini(
       responseMimeType: "application/json",
       responseSchema: RESPONSE_SCHEMA,
     },
-    contents: [{ role: "user", parts: [{ text: input.theme }] }],
+    contents: [{ role: "user", parts: [{ text: `${input.theme}${avoidBlock}${rejectedBlock}` }] }],
   });
 
   return parseSeriesJson(response.text ?? "", input.parts);
@@ -219,7 +260,17 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
     return wordBudget(input.minutesPerPart, wpm, opener + ctaWords);
   });
 
+  // Até 3 tentativas pra sair uma história que ainda não foi usada neste scheduler.
+  const usedTitles = input.avoidTitles ?? [];
+  const rejected: string[] = [];
   let raw = await callGemini(input, targetWordsPerPart);
+  for (let attempt = 1; findRepeatedTitle(raw.title, usedTitles); attempt++) {
+    if (attempt >= 3) {
+      throw new Error(`A IA repetiu uma história já usada neste scheduler 3 vezes seguidas ("${raw.title}"). Tente de novo ou varie o tema.`);
+    }
+    rejected.push(raw.title);
+    raw = await callGemini(input, targetWordsPerPart, undefined, rejected);
+  }
   let parts = assembleParts(
     raw.title,
     raw.parts.map((p) => p.text),
@@ -229,15 +280,20 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
   // Uma única retentativa, só para a primeira parte fora do orçamento.
   const offender = parts.find((p) => p.outOfBudget);
   if (offender) {
-    raw = await callGemini(input, targetWordsPerPart, {
+    const retried = await callGemini(input, targetWordsPerPart, {
       index: offender.index,
       words: offender.targetWords,
-    });
-    parts = assembleParts(
-      raw.title,
-      raw.parts.map((p) => p.text),
-      { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, targetWords: targetWordsPerPart },
-    );
+    }, rejected);
+    // A retentativa é uma chamada nova e pode voltar numa história repetida — aí fica
+    // com a primeira versão (fora do orçamento, mas inédita).
+    if (!findRepeatedTitle(retried.title, usedTitles)) {
+      raw = retried;
+      parts = assembleParts(
+        raw.title,
+        raw.parts.map((p) => p.text),
+        { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, targetWords: targetWordsPerPart },
+      );
+    }
   }
 
   return { title: raw.title, card: raw.card, parts, model: input.model };

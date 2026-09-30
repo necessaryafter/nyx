@@ -6,7 +6,7 @@ import { jobs, jobsRelations } from "./schema/jobs";
 import { creditTransactions, creditTransactionsRelations } from "./schema/credits";
 import { integrations } from "./schema/integrations";
 import { apiKeys } from "./schema/api-keys";
-import { schedulers, schedulerRuns, schedulersRelations, schedulerRunsRelations } from "./schema/schedulers";
+import { schedulers, schedulerRuns, schedulerStoryHistory, schedulersRelations, schedulerRunsRelations } from "./schema/schedulers";
 import { assetImportBatches } from "./schema/assetImports";
 import {
   user, session, account, verification,
@@ -32,6 +32,7 @@ const schema = {
   apiKeys,
   schedulers,
   schedulerRuns,
+  schedulerStoryHistory,
   schedulersRelations,
   schedulerRunsRelations,
   assetImportBatches,

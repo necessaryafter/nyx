@@ -1,7 +1,7 @@
 import { Worker, type Job as BullJob } from "bullmq";
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { database } from "../database";
-import { schedulers, schedulerRuns } from "../database/schema/schedulers";
+import { schedulers, schedulerRuns, schedulerStoryHistory } from "../database/schema/schedulers";
 import { jobs } from "../database/schema/jobs";
 import { templates } from "../database/schema/templates";
 import { assets } from "../database/schema/assets";
@@ -177,13 +177,15 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
   await updateRun(runId, { status: "scripting", startedAt: new Date() });
   broadcastRun(userId, { id: runId, schedulerId, status: "scripting", partsDone: 0, partsTotal });
 
-  const avoidRows = await database
-    .select({ title: schedulerRuns.title })
-    .from(schedulerRuns)
-    .where(and(eq(schedulerRuns.schedulerId, schedulerId), inArray(schedulerRuns.status, ["done", "partial"])))
-    .orderBy(desc(schedulerRuns.createdAt))
-    .limit(20);
-  const avoidTitles = avoidRows.map((r) => r.title).filter((t): t is string => !!t);
+  // Histórico próprio do scheduler (não some quando as execuções são apagadas).
+  const history = await database
+    .select({ title: schedulerStoryHistory.title, premise: schedulerStoryHistory.premise })
+    .from(schedulerStoryHistory)
+    .where(eq(schedulerStoryHistory.schedulerId, schedulerId))
+    .orderBy(desc(schedulerStoryHistory.createdAt))
+    .limit(50);
+  const avoidTitles = history.map((h) => h.title);
+  const avoidPremises = history.map((h) => h.premise ?? "");
 
   let script: SeriesScript;
   try {
@@ -197,11 +199,19 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
       finalCtaTemplate: scheduler.finalCtaTemplate ?? undefined,
       finalPartEnabled: scheduler.finalPartEnabled,
       avoidTitles,
+      avoidPremises,
     });
   } catch (err) {
     await fail(err instanceof Error ? err.message : "falha ao gerar roteiro da série");
     return;
   }
+
+  // Grava já na geração: mesmo que a renderização falhe depois, essa história não volta.
+  await database.insert(schedulerStoryHistory).values({
+    schedulerId,
+    title: script.title,
+    premise: script.parts[0]?.body.slice(0, 400) ?? null,
+  });
 
   await updateRun(runId, { status: "rendering", title: script.title, script });
   broadcastRun(userId, { id: runId, schedulerId, status: "rendering", partsDone: 0, partsTotal, title: script.title });

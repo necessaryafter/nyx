@@ -5,6 +5,7 @@ import {
   wordBudget,
   assembleParts,
   generateSeriesScript,
+  findRepeatedTitle,
 } from "../lib/ai/seriesScript";
 import * as geminiLib from "../lib/ai/gemini";
 
@@ -194,6 +195,50 @@ describe("generateSeriesScript", () => {
     expect(result.parts[0]!.outOfBudget).toBe(false);
   });
 
+  it("pede outra história quando a IA repete um título já usado, e manda o histórico no prompt", async () => {
+    const body = new Array(140).fill("palavra").join(" ");
+    const usedTitle = "Minha esposa financiava a vida secreta do irmão com a minha herança";
+    const titles = [usedTitle, "Meu sócio sumiu com o dinheiro da empresa e deixou um bilhete"];
+    const fakeClient = {
+      models: {
+        generateContent: mock((_req: { contents: Array<{ parts: Array<{ text: string }> }> }) =>
+          Promise.resolve({ text: JSON.stringify({ title: titles.shift(), card: FAKE_CARD, parts: [{ text: body }] }) }),
+        ),
+      },
+    };
+    spyOn(geminiLib, "createGemini").mockReturnValue(fakeClient as never);
+
+    const result = await generateSeriesScript({
+      apiKey: "key",
+      model: "gemini-3.1-flash-lite",
+      theme: "tema",
+      parts: 1,
+      minutesPerPart: 1,
+      avoidTitles: [usedTitle],
+      avoidPremises: ["O eco dos passos da minha esposa"],
+    });
+
+    expect(fakeClient.models.generateContent).toHaveBeenCalledTimes(2);
+    expect(result.title).toBe("Meu sócio sumiu com o dinheiro da empresa e deixou um bilhete");
+    const firstPrompt = fakeClient.models.generateContent.mock.calls[0]![0].contents[0]!.parts[0]!.text;
+    expect(firstPrompt).toContain(usedTitle);
+    expect(firstPrompt).toContain("O eco dos passos da minha esposa");
+    const secondPrompt = fakeClient.models.generateContent.mock.calls[1]![0].contents[0]!.parts[0]!.text;
+    expect(secondPrompt).toContain("história repetida");
+  });
+
+  it("falha com erro claro se a IA insistir na mesma história 3 vezes", async () => {
+    const body = new Array(140).fill("palavra").join(" ");
+    const usedTitle = "Minha esposa financiava a vida secreta do irmão com a minha herança";
+    const fakeClient = mockGeminiResponse(JSON.stringify({ title: usedTitle, card: FAKE_CARD, parts: [{ text: body }] }));
+    spyOn(geminiLib, "createGemini").mockReturnValue(fakeClient as never);
+
+    await expect(
+      generateSeriesScript({ apiKey: "key", model: "m", theme: "tema", parts: 1, minutesPerPart: 1, avoidTitles: [usedTitle] }),
+    ).rejects.toThrow(/repetiu uma história/);
+    expect(fakeClient.models.generateContent).toHaveBeenCalledTimes(3);
+  });
+
   it("throws a clear error when Gemini returns the wrong number of parts", async () => {
     const fakeClient = mockGeminiResponse(
       JSON.stringify({ title: "T", card: FAKE_CARD, parts: [{ text: "só uma" }] }),
@@ -226,5 +271,32 @@ describe("generateSeriesScript", () => {
     });
 
     expect(result.title).toBe("T");
+  });
+});
+
+describe("assembleParts: separadores do Gemini", () => {
+  it("remove ---ROTEIRO--- / ---FIM--- do corpo", () => {
+    const [part] = assembleParts("Título", ["---ROTEIRO---\n\nCorpo da história.\n---FIM---"], { ctaTemplate: "", targetWords: [10] });
+    expect(part!.body).toBe("Corpo da história.");
+  });
+});
+
+describe("findRepeatedTitle", () => {
+  const used = ["Eu descobri que a minha esposa financiava a vida secreta do próprio irmão usando a minha herança."];
+
+  it("mesmo título exato é repetido", () => {
+    expect(findRepeatedTitle(used[0]!, used)).toBe(used[0]);
+  });
+
+  it("mesmo título com pontuação/acentos/caixa diferentes é repetido", () => {
+    expect(findRepeatedTitle("eu descobri que minha esposa financiava a vida secreta do proprio irmao usando minha heranca", used)).toBe(used[0]);
+  });
+
+  it("história diferente no mesmo tema não é repetida", () => {
+    expect(findRepeatedTitle("Meu melhor amigo dormia com a minha noiva há dois anos e eu descobri pelo GPS do carro.", used)).toBeUndefined();
+  });
+
+  it("sem histórico nunca é repetido", () => {
+    expect(findRepeatedTitle(used[0]!, [])).toBeUndefined();
   });
 });

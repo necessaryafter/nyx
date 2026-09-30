@@ -68,6 +68,18 @@ export const schedulerRuns = pgTable("scheduler_runs", {
   index("scheduler_runs_scheduler_id_idx").on(t.schedulerId),
 ]);
 
+// Histórias já usadas por scheduler, pra IA não repetir. Separado de scheduler_runs de
+// propósito: apagar execuções não pode apagar a memória do que já foi publicado.
+export const schedulerStoryHistory = pgTable("scheduler_story_history", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  schedulerId: uuid("scheduler_id").notNull().references(() => schedulers.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  premise: text("premise"), // começo da parte 1 — ajuda a IA a reconhecer a mesma história com outro título
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+}, (t) => [
+  index("scheduler_story_history_scheduler_id_idx").on(t.schedulerId),
+]);
+
 export const schedulersRelations = relations(schedulers, ({ many }) => ({
   runs: many(schedulerRuns),
 }));
