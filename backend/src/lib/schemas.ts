@@ -33,6 +33,7 @@ const assetSourceConfigSchema = z.object({
   assetIds: z.array(z.string().uuid()),
   assetType: assetTypeSchema,
   mode: z.enum(["random-loop", "sequential"]).default("random-loop"),
+  speed: z.number().positive().optional(),
 });
 
 const sceneSourceConfigSchema = z.object({
@@ -311,7 +312,7 @@ export const updateSlotsSchema = z.object({
 const schedulerBaseSchema = z.object({
   name: z.string().min(1).max(80),
   templateId: z.string().uuid(),
-  theme: z.string().min(10).max(2000),
+  theme: z.string().min(10).max(5000),
   assetIds: z.array(z.string().uuid()).default([]),
   musicAssetIds: z.array(z.string().uuid()).default([]),
   mode: z.enum(["single", "parts"]),
@@ -320,6 +321,7 @@ const schedulerBaseSchema = z.object({
   minutesPerPart: z.number().min(0.5).max(10).optional(),
   noRepeatAssetsAcrossParts: z.boolean().default(false),
   randomizeAssetOrder: z.boolean().default(true),
+  backgroundSpeed: z.number().min(0.5).max(2.5).default(1),
   ctaTemplate: z.string().min(1).max(200).default("Curta e comente para a parte {next}."),
   finalCtaTemplate: z.string().max(200).optional(),
   finalPartEnabled: z.boolean().default(false),

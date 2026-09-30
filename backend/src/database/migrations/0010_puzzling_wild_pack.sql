@@ -1,0 +1,1 @@
+ALTER TABLE "schedulers" ADD COLUMN "background_speed" numeric DEFAULT 1 NOT NULL;

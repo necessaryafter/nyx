@@ -13,6 +13,7 @@ export interface SchedulerOverrideContext {
   assetIds: string[]; // fundo (video/image) desta parte; [] = mantém o que já está no template
   assetMode: "random-loop" | "sequential"; // como o renderer consome esses assetIds
   musicAssetIds: string[]; // trilha; [] = mantém o que já está no template
+  backgroundSpeed: number; // velocidade do vídeo de fundo (1 = normal, 1.5 = 50% mais rápido)
   title: string;
   partIndex: number; // 1-based
   partsTotal: number;
@@ -73,8 +74,8 @@ export function applySchedulerOverrides(graph: GraphInput, ctx: SchedulerOverrid
 
   const nodes = graph.nodes.map((node) => {
     if (node.type === "AssetSource" && (node.config.assetType === "video" || node.config.assetType === "image")) {
-      if (ctx.assetIds.length === 0) return node;
-      return { ...node, config: { ...node.config, assetIds: ctx.assetIds, mode: ctx.assetMode } };
+      if (ctx.assetIds.length === 0) return { ...node, config: { ...node.config, speed: ctx.backgroundSpeed } };
+      return { ...node, config: { ...node.config, assetIds: ctx.assetIds, mode: ctx.assetMode, speed: ctx.backgroundSpeed } };
     }
 
     if (node.type === "MusicSource") {

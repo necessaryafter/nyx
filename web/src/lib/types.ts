@@ -66,6 +66,7 @@ export interface Scheduler {
   minutesPerPart: number | null;
   noRepeatAssetsAcrossParts: boolean;
   randomizeAssetOrder: boolean;
+  backgroundSpeed: number;
   ctaTemplate: string;
   finalCtaTemplate: string | null;
   finalPartEnabled: boolean;

@@ -22,6 +22,7 @@ export interface SchedulerInput {
   minutesPerPart?: number;
   noRepeatAssetsAcrossParts?: boolean;
   randomizeAssetOrder?: boolean;
+  backgroundSpeed?: number;
   ctaTemplate?: string;
   finalCtaTemplate?: string;
   finalPartEnabled?: boolean;

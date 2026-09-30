@@ -29,6 +29,8 @@ export const schedulers = pgTable("schedulers", {
   noRepeatAssetsAcrossParts: boolean("no_repeat_assets_across_parts").notNull().default(false),
   // true (default) = mantém o sorteio de sempre; false = ordem alfabética pelo nome do asset.
   randomizeAssetOrder: boolean("randomize_asset_order").notNull().default(true),
+  // 1 (default) = velocidade normal do vídeo de fundo; ex. 1.5 = 50% mais rápido.
+  backgroundSpeed: numeric("background_speed", { mode: "number" }).notNull().default(1),
   totalMinutes: numeric("total_minutes", { mode: "number" }),
   partsCount: integer("parts_count"),
   minutesPerPart: numeric("minutes_per_part", { mode: "number" }),

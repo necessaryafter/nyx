@@ -4,6 +4,7 @@ import type { SceneAsset } from "../prepare/scenes";
 export interface MediaPool {
   paths: string[];
   mode: "random-loop" | "sequential";
+  speed?: number;
 }
 
 export function extractMediaPool(
@@ -23,5 +24,5 @@ export function extractMediaPool(
     return p ? [p] : [];
   });
 
-  return { paths, mode: node.config.mode ?? "random-loop" };
+  return { paths, mode: node.config.mode ?? "random-loop", speed: node.config.speed };
 }

@@ -65,6 +65,7 @@ export interface AssetSourceConfig {
   assetIds: string[];
   assetType: "video" | "audio" | "image";
   mode?: "random-loop" | "sequential";
+  speed?: number;
 }
 
 export interface SceneSourceConfig {

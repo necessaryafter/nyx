@@ -67,6 +67,7 @@ async function runOnePart(
     assetIds: ctx.partAssetIds,
     assetMode: ctx.scheduler.randomizeAssetOrder ? "random-loop" : "sequential",
     musicAssetIds: ctx.scheduler.musicAssetIds,
+    backgroundSpeed: ctx.scheduler.backgroundSpeed,
     title: ctx.title,
     partIndex: part.index,
     partsTotal: ctx.partsTotal,

@@ -46,6 +46,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [UUID_NEW_BG],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "Um título",
       partIndex: 1,
       partsTotal: 1,
@@ -61,6 +62,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [UUID_NEW_BG],
       assetMode: "sequential",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "T",
       partIndex: 1,
       partsTotal: 1,
@@ -75,6 +77,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "T",
       partIndex: 1,
       partsTotal: 1,
@@ -84,11 +87,29 @@ describe("applySchedulerOverrides", () => {
     expect(bg?.type === "AssetSource" && bg.config.assetIds).toEqual([UUID_BG]);
   });
 
+  it("carries backgroundSpeed onto the AssetSource node even when assetIds is empty", () => {
+    const out = applySchedulerOverrides(baseGraph(), {
+      assetIds: [],
+      assetMode: "random-loop",
+      musicAssetIds: [],
+      backgroundSpeed: 1.5,
+      title: "T",
+      partIndex: 1,
+      partsTotal: 1,
+      card: SAMPLE_CARD,
+    });
+    const bg = out.nodes.find((n) => n.id === "bg");
+    expect(bg?.type === "AssetSource" && bg.config.speed).toBe(1.5);
+    // mantém os assets do template — só a velocidade é sobreposta
+    expect(bg?.type === "AssetSource" && bg.config.assetIds).toEqual([UUID_BG]);
+  });
+
   it("replaces MusicSource assets independently of the background", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [UUID_NEW_MUSIC],
+      backgroundSpeed: 1,
       title: "T",
       partIndex: 1,
       partsTotal: 1,
@@ -103,6 +124,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "Um título",
       partIndex: 1,
       partsTotal: 3,
@@ -117,6 +139,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "Um título",
       partIndex: 3,
       partsTotal: 3,
@@ -132,6 +155,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "Um título",
       partIndex: 1,
       partsTotal: 1,
@@ -146,6 +170,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "T",
       partIndex: 1,
       partsTotal: 1,
@@ -168,6 +193,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "T",
       partIndex: 1,
       partsTotal: 1,
@@ -183,6 +209,7 @@ describe("applySchedulerOverrides", () => {
       assetIds: [],
       assetMode: "random-loop",
       musicAssetIds: [],
+      backgroundSpeed: 1,
       title: "T",
       partIndex: 1,
       partsTotal: 1,

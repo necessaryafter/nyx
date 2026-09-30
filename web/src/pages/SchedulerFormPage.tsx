@@ -52,6 +52,7 @@ export function SchedulerFormPage() {
   const [musicAssetIds, setMusicAssetIds] = useState<string[]>([]);
   const [noRepeatAssetsAcrossParts, setNoRepeatAssetsAcrossParts] = useState(false);
   const [randomizeAssetOrder, setRandomizeAssetOrder] = useState(true);
+  const [backgroundSpeed, setBackgroundSpeed] = useState(1);
   const [mode, setMode] = useState<"single" | "parts">("parts");
   const [totalMinutes, setTotalMinutes] = useState(3);
   const [partsCount, setPartsCount] = useState(4);
@@ -78,6 +79,7 @@ export function SchedulerFormPage() {
     setMusicAssetIds(s.musicAssetIds);
     setNoRepeatAssetsAcrossParts(s.noRepeatAssetsAcrossParts);
     setRandomizeAssetOrder(s.randomizeAssetOrder);
+    setBackgroundSpeed(s.backgroundSpeed);
     setMode(s.mode);
     if (s.totalMinutes != null) setTotalMinutes(s.totalMinutes);
     if (s.partsCount != null) setPartsCount(s.partsCount);
@@ -121,6 +123,7 @@ export function SchedulerFormPage() {
       musicAssetIds,
       noRepeatAssetsAcrossParts,
       randomizeAssetOrder,
+      backgroundSpeed,
       mode,
       ...(mode === "single" ? { totalMinutes } : { partsCount, minutesPerPart }),
       ctaTemplate,
@@ -211,7 +214,7 @@ export function SchedulerFormPage() {
             )}
           </Field>
 
-          <Field label="Tema" hint={`${theme.trim().length}/2000 caracteres (mínimo 10)`}>
+          <Field label="Tema" hint={`${theme.trim().length}/5000 caracteres (mínimo 10)`}>
             <textarea
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
@@ -247,6 +250,20 @@ export function SchedulerFormPage() {
                 <p className="pl-5 text-[11px] text-nyx-text-muted">
                   Divide os vídeos entre as partes da execução em vez de repetir a lista inteira em cada uma.
                 </p>
+                <label className="flex items-center justify-between text-xs text-nyx-text-secondary">
+                  <span>Velocidade do vídeo de fundo</span>
+                  <span className="font-medium text-nyx-text-primary">{backgroundSpeed.toFixed(2)}x</span>
+                </label>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2.5}
+                  step={0.05}
+                  value={backgroundSpeed}
+                  onChange={(e) => setBackgroundSpeed(Number(e.target.value))}
+                  className="w-full accent-nyx-cyan-500"
+                />
+                <p className="text-[11px] text-nyx-text-muted">1x = normal. Só afeta o vídeo, a narração continua no ritmo normal.</p>
               </div>
             </Field>
             <Field label="Trilha" hint="Vazio = usa a do template">
