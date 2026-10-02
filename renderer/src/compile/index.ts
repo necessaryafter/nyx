@@ -9,6 +9,7 @@ import { extractSfx, type PendingSfx } from "./sfx";
 import { extractMusic, type MusicConfig } from "./music";
 import { extractMediaPool, type MediaPool } from "./pool";
 import { extractTitleCard, type TitleCardPlan } from "./titleCard";
+import { extractWatermark, type WatermarkPlan } from "./watermark";
 
 export type { TitleCardPlan, SceneAsset, CameraEffects, SubtitleConfig, PendingOverlay, PendingSfx, MusicConfig, MediaPool };
 
@@ -24,9 +25,12 @@ export interface RenderPlan {
   music: MusicConfig;
   sfx: PendingSfx[];
   titleCard?: TitleCardPlan;
+  watermark?: WatermarkPlan;
 }
 
 export interface CompilePlanInput {
+  avatarPath?: string; // imagem do avatar do card, já baixada
+  watermarkPath?: string; // imagem da marca d'água (etapa ShowWatermark), já baixada
   graph: Graph;
   audioPath: string;
   timestamps: WordTimestamp[];
@@ -34,7 +38,11 @@ export interface CompilePlanInput {
   sceneAssets: SceneAsset[];
 }
 
-export function compilePlan({ graph, audioPath, timestamps, assetMap, sceneAssets }: CompilePlanInput): RenderPlan {
+function withAvatar(plan: TitleCardPlan | undefined, avatarPath: string | undefined): TitleCardPlan | undefined {
+  return plan && avatarPath ? { ...plan, avatarPath } : plan;
+}
+
+export function compilePlan({ graph, audioPath, timestamps, assetMap, sceneAssets, avatarPath, watermarkPath }: CompilePlanInput): RenderPlan {
   const slotLike: ResolvedSceneSlot[] = sceneAssets.map((s) => ({
     index: s.index,
     startMs: s.startMs,
@@ -56,6 +64,7 @@ export function compilePlan({ graph, audioPath, timestamps, assetMap, sceneAsset
     subtitles: extractSubtitles(graph, actions),
     music: extractMusic(graph, assetMap),
     sfx: extractSfx(actions, assetMap),
-    titleCard: extractTitleCard(graph, timestamps),
+    titleCard: withAvatar(extractTitleCard(graph, timestamps), avatarPath),
+    watermark: extractWatermark(graph, watermarkPath),
   };
 }

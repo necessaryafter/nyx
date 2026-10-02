@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import type { NarrationSourceConfig } from "../lib/types";
 import { ArrowLeft, Loader2, Play } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -22,15 +23,14 @@ export function RenderPage() {
       const draft = await api.post<{ id: string }>("/api/jobs/draft", { templateId });
       // Usa o que o template define na Narração (provider, voz, velocidade) em vez de fixar Talkify.
       const cfg = templateQuery.data?.graph.nodes.find((n) => n.type === "NarrationSource")?.config as
-        | { provider?: string; voice?: string; speed?: number }
+        | NarrationSourceConfig
         | undefined;
       await api.post(`/api/jobs/${draft.id}/audio`, {
         narration: {
+          ...cfg, // voz, velocidade e (gemini) modelo/estilo — o backend ignora o resto
           type: "tts",
           text,
-          provider: cfg?.provider === "edge" ? "edge" : "talkify",
-          voice: cfg?.voice,
-          speed: cfg?.speed,
+          provider: cfg?.provider === "edge" || cfg?.provider === "gemini" ? cfg.provider : "talkify",
         },
       });
       return draft;

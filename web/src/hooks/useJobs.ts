@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { VoiceConfig } from "../lib/types";
 import { useEffect, useRef } from "react";
 import { api } from "../lib/api";
 import type { Job, JobStatus, PaginatedResponse, SceneSlot } from "../lib/types";
@@ -47,13 +48,11 @@ export function useCreateDraftJob() {
 export function useStartAudio(jobId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (narration: {
+    mutationFn: (narration: ({
       type: "tts";
       text: string;
-      provider: "talkify" | "edge";
-      voice?: string;
-      speed?: number;
-    } | { type: "audio"; assetId: string }) =>
+      provider: "talkify" | "edge" | "gemini";
+    } & VoiceConfig) | { type: "audio"; assetId: string }) =>
       api.post<{ status: string }>(`/api/jobs/${jobId}/audio`, { narration }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }),
   });

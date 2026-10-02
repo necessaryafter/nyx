@@ -104,7 +104,7 @@ export function RunRow({ run, schedulerId }: { run: SchedulerRun; schedulerId: s
           {run.error && (
             <div className="space-y-2">
               <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3">
-                <p className="font-mono text-xs text-red-300">{run.error}</p>
+                <p className="whitespace-pre-line font-mono text-xs text-red-300">{run.error}</p>
               </div>
               <Button variant="ghost" size="sm" onClick={copyError}>
                 {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}

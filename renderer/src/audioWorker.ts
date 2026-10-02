@@ -12,13 +12,15 @@ import { decrypt, storageClient, BUCKET_ASSETS } from "@nyx/shared";
 import { TalkifyProvider } from "./tts/providers/talkify.provider";
 import { CustomAudioProvider } from "./tts/providers/custom.provider";
 import { EdgeTTSProvider } from "./tts/providers/edge.provider";
+import { GeminiTTSProvider } from "./tts/providers/gemini.provider";
 import type { TTSConfig, WordTimestamp } from "./graph";
-import { calculateSceneSlots } from "./sceneSlots";
+import { calculateSceneSlots, sentenceSlots } from "./sceneSlots";
+import { sanitizeNarrationText } from "./tts/base.provider";
 
 export interface AudioJobData {
   jobId: string;
   narration:
-    | { type: "tts"; text: string; provider: "talkify" | "edge"; voice?: string; speed?: number }
+    | ({ type: "tts"; text: string; provider: "talkify" | "edge" | "gemini" } & Pick<TTSConfig, "voice" | "speed" | "model" | "paceMode" | "stylePreset" | "style">)
     | { type: "audio"; assetStorageKey: string }; // storageKey já resolvido
 }
 
@@ -30,7 +32,7 @@ function calcSlots(timestamps: WordTimestamp[], pauseMs = 500) {
 
 async function synthesize(
   narration: AudioJobData["narration"],
-  talkifyApiKey: string | undefined,
+  keys: { talkify?: string; gemini?: string },
   workDir: string,
 ): Promise<{ audioPath: string; timestamps: WordTimestamp[]; sceneSlots?: ReturnType<typeof calculateSceneSlots> }> {
   const audioPath = join(workDir, "tts.wav");
@@ -52,6 +54,17 @@ async function synthesize(
       return { audioPath, timestamps: result.wordTimestamps, sceneSlots };
     }
 
+    if (narration.provider === "gemini") {
+      if (!keys.gemini) throw new Error("AudioWorker: chave do Gemini não configurada (Configurações → Integrações)");
+      const { type: _, text, ...config } = narration;
+      const result = await new GeminiTTSProvider(keys.gemini).synthesize(text, config);
+      await writeFile(audioPath, result.audio);
+      // Mesmo texto que foi pro TTS (synthesize sanitiza antes de falar).
+      const sceneSlots = sentenceSlots(result.wordTimestamps, sanitizeNarrationText(text));
+      return { audioPath, timestamps: result.wordTimestamps, sceneSlots };
+    }
+
+    const talkifyApiKey = keys.talkify;
     if (!talkifyApiKey) {
       throw new Error("AudioWorker: Talkify API key não configurada para este usuário");
     }
@@ -100,11 +113,16 @@ export function startAudioWorker() {
         const talkifyApiKey = talkifyIntegration
           ? decrypt(talkifyIntegration.encryptedApiKey)
           : undefined;
+        // Mesma regra do backend (resolveGeminiKey): chave do usuário, senão a global.
+        const geminiIntegration = narration.type === "tts" && narration.provider === "gemini"
+          ? await fetchUserIntegration(dbJob.userId, "gemini")
+          : null;
+        const geminiApiKey = geminiIntegration ? decrypt(geminiIntegration.encryptedApiKey) : process.env.GOOGLE_AI_STUDIO_KEY;
 
         workDir = await mkdtemp(join(tmpdir(), `audio-${jobId}-`));
 
         // Sintetiza áudio
-        const { audioPath, timestamps, sceneSlots: prebuiltSlots } = await synthesize(narration, talkifyApiKey, workDir);
+        const { audioPath, timestamps, sceneSlots: prebuiltSlots } = await synthesize(narration, { talkify: talkifyApiKey, gemini: geminiApiKey }, workDir);
 
         // Faz upload para MinIO
         const audioKey = `audio-jobs/${jobId}/tts.wav`;

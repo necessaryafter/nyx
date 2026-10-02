@@ -17,7 +17,7 @@ export const templateRoutes = new Elysia({ prefix: "/api/templates" })
     }
 
     if (parsed.data.graph.nodes.length > 0) {
-      const structErrors = validateGraphStructure(parsed.data.graph as Parameters<typeof validateGraphStructure>[0]);
+      const structErrors = validateGraphStructure(parsed.data.graph as Parameters<typeof validateGraphStructure>[0], { requireAssets: false });
       if (structErrors.length > 0) {
         set.status = 400;
         return { error: "invalid graph structure", details: structErrors };
@@ -94,7 +94,7 @@ export const templateRoutes = new Elysia({ prefix: "/api/templates" })
     }
 
     if (parsed.data.graph && parsed.data.graph.nodes.length > 0) {
-      const structErrors = validateGraphStructure(parsed.data.graph as Parameters<typeof validateGraphStructure>[0]);
+      const structErrors = validateGraphStructure(parsed.data.graph as Parameters<typeof validateGraphStructure>[0], { requireAssets: false });
       
       if (structErrors.length > 0) {
         set.status = 400;

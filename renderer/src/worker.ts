@@ -1,6 +1,6 @@
 import { Worker, type Job } from "bullmq";
 import { mkdtemp, rm, stat } from "fs/promises";
-import { join } from "path";
+import { extname, join } from "path";
 import { tmpdir } from "os";
 import { createReadStream } from "fs";
 import { logger } from "@nyx/shared";
@@ -11,7 +11,7 @@ import { probeDuration } from "./ffmpeg/probe";
 import type { Graph } from "./graph";
 import { prepareAudio } from "./prepare/audio";
 import { downloadSceneAssets } from "./prepare/scenes";
-import { downloadAssets } from "./prepare/assets";
+import { downloadAsset, downloadAssets } from "./prepare/assets";
 import { compilePlan } from "./compile/index";
 import { buildVideo } from "./ffmpeg/builder";
 
@@ -55,6 +55,29 @@ function patchStorageKeys(graph: Graph, keyMap: Map<string, string>): Graph {
     return node;
   });
   return { ...graph, nodes };
+}
+
+/** Imagem opcional (avatar do card, marca d'água). Sumiu ou não baixou: sai sem ela, sem derrubar o vídeo. */
+async function downloadOptionalImage(assetId: string | null | undefined, name: string, workDir: string): Promise<string | undefined> {
+  if (!assetId) return undefined;
+  try {
+    const key = (await resolveAssetKeys([assetId])).get(assetId);
+    if (!key) throw new Error("asset não encontrado");
+    return await downloadAsset(key, join(workDir, `${name}${extname(key) || ".png"}`));
+  } catch (err) {
+    logger.warn({ err, assetId }, `imagem opcional (${name}) indisponível, o vídeo sai sem ela`);
+    return undefined;
+  }
+}
+
+export async function downloadOptionalImages(graph: Graph, workDir: string): Promise<{ avatarPath?: string; watermarkPath?: string }> {
+  const card = graph.nodes.find((n) => n.type === "ShowTitleCard");
+  const mark = graph.nodes.find((n) => n.type === "ShowWatermark");
+  const [avatarPath, watermarkPath] = await Promise.all([
+    downloadOptionalImage(card?.type === "ShowTitleCard" ? card.config.avatarAssetId : undefined, "avatar", workDir),
+    downloadOptionalImage(mark?.type === "ShowWatermark" ? mark.config.assetId : undefined, "watermark", workDir),
+  ]);
+  return { avatarPath, watermarkPath };
 }
 
 function resolve(id: string, keyMap: Map<string, string>): string {
@@ -130,8 +153,11 @@ export function startWorker() {
         const assetMap = await downloadAssets(assetIds.map((id) => keyMap.get(id) ?? id), workDir);
         logger.info({ jobId, assets: assetMap.size, ms: Date.now() - tDownload }, "pool assets downloaded");
 
+        // Imagens opcionais (avatar do card e marca d'água): se sumirem, o vídeo sai sem elas — não derruba o render.
+        const { avatarPath, watermarkPath } = await downloadOptionalImages(resolvedGraph, workDir);
+
         // ── compile ───────────────────────────────────────────────────────
-        const plan = compilePlan({ graph: resolvedGraph, audioPath, timestamps, assetMap, sceneAssets });
+        const plan = compilePlan({ graph: resolvedGraph, audioPath, timestamps, assetMap, sceneAssets, avatarPath, watermarkPath });
         logger.info({ jobId }, "render plan compiled");
 
         // ── build ─────────────────────────────────────────────────────────

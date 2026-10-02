@@ -1,8 +1,10 @@
 import { AnimatePresence, motion } from "motion/react";
+import { VoiceFields } from "../VoiceFields";
+import { formatSpeedPct } from "../../lib/voices";
 import { Check, ChevronDown, MousePointer2, Play, Search, Square, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "../../stores/editorStore";
-import { useAssets } from "../../hooks/useAssets";
+import { useAssets, useAssetUrl } from "../../hooks/useAssets";
 import { NODE_DEFINITIONS } from "../../lib/nodeDefaults";
 import { cn } from "../../lib/cn";
 import type {
@@ -22,14 +24,11 @@ import type {
   SetSubtitleStyleConfig,
   ShowOverlayConfig,
   ShowTitleCardConfig,
+  ShowWatermarkConfig,
   SubtitleStyle,
+  TitleCardField,
 } from "../../lib/types";
 
-// speed é um multiplicador (1 = normal); na tela aparece como % em relação ao normal (1.02 -> +2%).
-function formatSpeedPct(speed = 1): string {
-  const pct = Math.round((speed - 1) * 100);
-  return pct === 0 ? "normal (0%)" : `${pct > 0 ? "+" : ""}${pct}%`;
-}
 
 const inputCls = "h-8 w-full rounded-lg border border-nyx-border bg-nyx-void px-2.5 text-xs text-nyx-text-primary focus:border-nyx-cyan-500 focus:outline-none";
 
@@ -201,7 +200,7 @@ function AssetPicker({
   onChange,
   multiple = true,
 }: {
-  type: "video" | "audio" | "text";
+  type: "video" | "audio" | "text" | "image";
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   multiple?: boolean;
@@ -256,6 +255,40 @@ function AssetPicker({
   );
 }
 
+/** Escolha de uma imagem (asset) do card, com prévia e botão de remover. `round` = prévia redonda (avatar). */
+function CardImageField({
+  label,
+  help,
+  assetId,
+  round,
+  onChange,
+}: {
+  label: string;
+  help: string;
+  assetId: string | null | undefined;
+  round?: boolean;
+  onChange: (id: string | null) => void;
+}) {
+  const url = useAssetUrl(assetId ?? "", !!assetId).data?.url;
+  return (
+    <div className="space-y-2">
+      <FieldLabel>{label}</FieldLabel>
+      <p className="text-xs text-nyx-text-muted">{help}</p>
+      {assetId && (
+        <div className="flex items-center gap-3">
+          <img
+            src={url}
+            alt=""
+            className={cn("h-14 border border-nyx-border bg-nyx-void", round ? "w-14 rounded-full object-cover" : "max-w-[120px] rounded object-contain")}
+          />
+          <button onClick={() => onChange(null)} className="text-xs text-red-400 hover:underline">Remover</button>
+        </div>
+      )}
+      <AssetPicker type="image" selectedIds={assetId ? [assetId] : []} multiple={false} onChange={([id]) => onChange(id ?? null)} />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Node config panels
 // ---------------------------------------------------------------------------
@@ -285,6 +318,7 @@ function NarrationProps({ nodeId, config }: { nodeId: string; config: NarrationS
           options={[
             { value: "talkify", label: "Talkify" },
             { value: "edge", label: "Edge TTS (gratuito)" },
+            { value: "gemini", label: "Gemini TTS" },
             { value: "custom", label: "Audio custom" },
           ]}
         />
@@ -295,14 +329,20 @@ function NarrationProps({ nodeId, config }: { nodeId: string; config: NarrationS
           <textarea value={config.text ?? ""} onChange={(e) => update(nodeId, { text: e.target.value })} className="h-28 w-full resize-none rounded-lg border border-nyx-border bg-nyx-void p-2.5 text-xs text-nyx-text-primary focus:border-nyx-cyan-500 focus:outline-none" />
         </div>
       )}
-      <div>
-        <FieldLabel>Voz</FieldLabel>
-        <input value={config.voice ?? ""} onChange={(e) => update(nodeId, { voice: e.target.value || undefined })} placeholder="Padrao do provider" className={inputCls} />
-      </div>
-      <div>
-        <FieldLabel>Velocidade: {formatSpeedPct(config.speed)}</FieldLabel>
-        <input type="range" min={0.5} max={2} step={0.01} value={config.speed ?? 1} onChange={(e) => update(nodeId, { speed: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
-      </div>
+      {config.provider === "edge" || config.provider === "gemini" ? (
+        <VoiceFields provider={config.provider} value={config} onChange={(patch) => update(nodeId, patch)} inputCls={inputCls} />
+      ) : (
+        <>
+          <div>
+            <FieldLabel>Voz</FieldLabel>
+            <input value={config.voice ?? ""} onChange={(e) => update(nodeId, { voice: e.target.value || undefined })} placeholder="Padrao do provider" className={inputCls} />
+          </div>
+          <div>
+            <FieldLabel>Velocidade: {formatSpeedPct(config.speed)}</FieldLabel>
+            <input type="range" min={0.5} max={2} step={0.01} value={config.speed ?? 1} onChange={(e) => update(nodeId, { speed: Number(e.target.value) })} className="w-full accent-nyx-cyan-500" />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -580,22 +620,93 @@ function ActionProps({ nodeId, type, config }: { nodeId: string; type: NodeType;
   }
   if (type === "ShowTitleCard") {
     const cfg = config as ShowTitleCardConfig;
-    const field = (label: string, key: keyof ShowTitleCardConfig, placeholder: string) => (
-      <div key={key}>
-        <FieldLabel>{label}</FieldLabel>
-        <input value={cfg[key] ?? ""} onChange={(e) => update(nodeId, { [key]: e.target.value })} placeholder={placeholder} className={inputCls} />
-      </div>
-    );
+    // Auto: o campo fica vazio e o render sorteia um valor a cada vídeo (no scheduler, quem preenche é a IA).
+    const field = (label: string, key: TitleCardField, placeholder: string) => {
+      const isAuto = cfg.auto?.includes(key) ?? false;
+      return (
+        <div key={key}>
+          <div className="flex items-center justify-between">
+            <FieldLabel>{label}</FieldLabel>
+            <label className="flex items-center gap-1 text-[11px] text-nyx-text-muted">
+              <input
+                type="checkbox"
+                checked={isAuto}
+                onChange={(e) => update(nodeId, {
+                  auto: e.target.checked ? [...(cfg.auto ?? []), key] : (cfg.auto ?? []).filter((k) => k !== key),
+                  [key]: "", // ao trocar de modo o valor antigo sai, senão ele venceria o sorteio
+                })}
+              />
+              Auto
+            </label>
+          </div>
+          <input
+            value={cfg[key] ?? ""}
+            disabled={isAuto}
+            onChange={(e) => update(nodeId, { [key]: e.target.value })}
+            placeholder={isAuto ? "automático (muda a cada vídeo)" : placeholder}
+            className={cn(inputCls, isAuto && "cursor-not-allowed opacity-60")}
+          />
+        </div>
+      );
+    };
     return (
       <div className="space-y-3">
         <SectionLabel>Card de título</SectionLabel>
         <p className="text-xs text-nyx-text-muted">O título é a primeira frase da narração. O card some quando ela termina e a legenda segue normal.</p>
+        <p className="text-xs text-nyx-text-muted">
+          Campo em <strong>Auto</strong> muda a cada vídeo (no scheduler vem da IA ou do sorteio dele; em render manual é sorteado).
+          Campo <strong>fixo</strong> usa sempre o que você digitar. Em templates que ainda não usam Auto, o scheduler substitui tudo.
+        </p>
         {field("Subreddit", "subreddit", "r/historias")}
         {field("Usuario", "username", "funcionario_revoltado")}
         {field("Tempo", "timeAgo", "há 5h")}
         {field("Tag (flair)", "flair", "Relato da firma")}
         {field("Upvotes", "upvotes", "18.4k")}
         {field("Comentarios", "comments", "1.2k")}
+        <CardImageField
+          label="Imagem do avatar"
+          help="Opcional: troca a letra do círculo. Envie a imagem em Assets (aba Imagens). Ela é recortada no centro e ajustada ao círculo sozinha; se o asset for apagado, volta a letra."
+          assetId={cfg.avatarAssetId}
+          round
+          onChange={(id) => update(nodeId, { avatarAssetId: id })}
+        />
+      </div>
+    );
+  }
+  if (type === "ShowWatermark") {
+    const cfg = config as ShowWatermarkConfig;
+    const slider = (label: string, key: "widthPercent" | "opacity" | "marginPercent", min: number, max: number, step: number, fallback: number, format: (v: number) => string) => (
+      <div key={key}>
+        <div className="flex items-center justify-between">
+          <FieldLabel>{label}</FieldLabel>
+          <span className="text-xs font-medium text-nyx-text-primary">{format(cfg[key] ?? fallback)}</span>
+        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={cfg[key] ?? fallback}
+          onChange={(e) => update(nodeId, { [key]: Number(e.target.value) })}
+          className="w-full accent-nyx-cyan-500"
+        />
+      </div>
+    );
+    return (
+      <div className="space-y-3">
+        <SectionLabel>Marca d'água</SectionLabel>
+        <p className="text-xs text-nyx-text-muted">
+          Imagem pequena no canto inferior direito, do primeiro ao último frame do vídeo (não depende do card). Envie a imagem em Assets (aba Imagens);
+          ela é redimensionada sozinha, sem cortar nem esticar. Sem imagem escolhida, o vídeo sai sem marca.
+        </p>
+        <CardImageField label="Imagem" help="PNG com fundo transparente fica melhor." assetId={cfg.assetId} onChange={(id) => update(nodeId, { assetId: id })} />
+        {slider("Tamanho", "widthPercent", 3, 50, 1, 14, (v) => `${v}% da largura`)}
+        {slider("Opacidade", "opacity", 0.1, 1, 0.05, 1, (v) => `${Math.round(v * 100)}%`)}
+        {slider("Margem das bordas", "marginPercent", 0, 20, 1, 4, (v) => `${v}%`)}
+        <p className="text-xs text-nyx-text-muted">
+          Atenção: nos Shorts e no TikTok a interface (botões, nome do canal e o disco da música) cobre parte do canto inferior direito.
+          Se a marca ficar escondida, aumente a margem para subir e afastar da borda.
+        </p>
       </div>
     );
   }
@@ -672,14 +783,14 @@ export function PropertiesPanel() {
   }[nodeKind ?? ""];
 
   return (
-    <div className="flex w-full flex-col border border-nyx-border bg-nyx-deep rounded-xl overflow-hidden">
+    <div className="flex min-h-0 w-full flex-1 flex-col border border-nyx-border bg-nyx-deep rounded-xl overflow-hidden">
       <AnimatePresence mode="wait">
         {!selectedNode || !nodeType ? (
           <motion.div key="empty" className="h-full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <EmptyPanel />
           </motion.div>
         ) : (
-          <motion.div key={selectedNodeId} className="flex h-full flex-col" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.15 }}>
+          <motion.div key={selectedNodeId} className="flex min-h-0 flex-1 flex-col" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.15 }}>
             <div className="flex items-center justify-between border-b border-nyx-border px-4 py-3">
               <div>
                 <p className="text-sm font-semibold text-nyx-text-primary">{definition?.label ?? nodeType}</p>
@@ -689,7 +800,7 @@ export function PropertiesPanel() {
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <NodeForm nodeId={selectedNodeId!} type={nodeType} config={nodeConfig} />
             </div>
           </motion.div>

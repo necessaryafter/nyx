@@ -136,7 +136,15 @@ export const NODE_DEFINITIONS: Record<NodeType, NodeDefinition> = {
     icon: "MessageSquareText",
     color: "cyan-400",
     kind: "action",
-    defaultConfig: { subreddit: "r/historias", username: "", timeAgo: "há 5h", flair: "", upvotes: "18.4k", comments: "1.2k" },
+    defaultConfig: { auto: ["subreddit", "username", "timeAgo", "flair", "upvotes", "comments"], subreddit: "", username: "", timeAgo: "", flair: "", upvotes: "", comments: "" },
+  },
+  ShowWatermark: {
+    label: "Marca d'água",
+    description: "Imagem pequena no canto inferior direito, o vídeo todo",
+    icon: "Stamp",
+    color: "cyan-400",
+    kind: "action",
+    defaultConfig: { assetId: null, widthPercent: 14, opacity: 1, marginPercent: 4 },
   },
   CameraEffect: {
     label: "Efeito de câmera",
@@ -174,6 +182,7 @@ export const NODE_HANDLES: Record<NodeType, { inputs: string[]; outputs: string[
   SetMusic: { inputs: ["event", "music"], outputs: ["action"] },
   CameraEffect: { inputs: ["event"], outputs: ["action"] },
   ShowTitleCard: { inputs: [], outputs: ["action"] },
+  ShowWatermark: { inputs: [], outputs: ["action"] },
   Render: { inputs: ["action", "music"], outputs: [] },
 };
 
@@ -185,6 +194,6 @@ export interface NodeCategory {
 export const NODE_CATEGORIES: NodeCategory[] = [
   { label: "ENTRADAS", nodes: ["NarrationSource", "AssetSource", "SceneSource", "MusicSource"] },
   { label: "GATILHOS", nodes: ["OnTime", "OnWord", "OnSentence", "OnSilence", "OnSceneStart", "OnSceneEnd"] },
-  { label: "AÇÕES", nodes: ["SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect", "ShowTitleCard"] },
+  { label: "AÇÕES", nodes: ["SetMedia", "ShowOverlay", "SetSubtitleStyle", "PlaySfx", "SetMusic", "CameraEffect", "ShowTitleCard", "ShowWatermark"] },
   { label: "SAÍDA", nodes: ["Render"] },
 ];

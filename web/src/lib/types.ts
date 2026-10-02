@@ -67,9 +67,11 @@ export interface Scheduler {
   noRepeatAssetsAcrossParts: boolean;
   randomizeAssetOrder: boolean;
   backgroundSpeed: number;
+  narration: SchedulerNarration | null;
   ctaTemplate: string;
   finalCtaTemplate: string | null;
   finalPartEnabled: boolean;
+  finalPartLabel: string;
   aiProvider: string;
   aiModel: string;
   cronPattern: string | null;
@@ -140,9 +142,19 @@ export interface Asset {
   name: string;
   type: "video" | "audio" | "text" | "image";
   sizeBytes: number | null;
+  category: string | null; // null = avulso (fora de qualquer categoria)
   importBatchId: string | null;
   createdAt: string;
 }
+
+export interface AssetCategories {
+  categories: { category: string; count: number }[];
+  none: number; // quantos estão avulsos
+  total: number;
+}
+
+/** Filtro de categoria nas listagens: undefined = todas, NO_CATEGORY = só avulsos, senão o nome. */
+export const NO_CATEGORY = "__none__";
 
 // ── asset-import ──
 
@@ -206,6 +218,7 @@ export type NodeType =
   | "SetMusic"
   | "CameraEffect"
   | "ShowTitleCard"
+  | "ShowWatermark"
   | "Render";
 
 export interface GraphEdge {
@@ -215,12 +228,24 @@ export interface GraphEdge {
   role?: "media" | "sfx" | "music" | "overlay" | "narration" | "scene" | "trigger";
 }
 
-export interface NarrationSourceConfig {
-  mode?: "job-input" | "tts" | "audio" | "precomputed";
-  text?: string;
-  provider?: "talkify" | "custom" | "precomputed";
+/** Config de voz: nó Narração e voz própria do scheduler (mesmo formato no backend). */
+export interface VoiceConfig {
   voice?: string;
   speed?: number;
+  // Só gemini:
+  model?: string;
+  paceMode?: "style" | "slider";
+  stylePreset?: "rapido" | "moderado" | "lento" | "custom";
+  style?: string;
+}
+
+/** Voz própria do scheduler; null = usa a do nó Narração do template. */
+export type SchedulerNarration = { provider: "edge" | "gemini" } & VoiceConfig;
+
+export interface NarrationSourceConfig extends VoiceConfig {
+  mode?: "job-input" | "tts" | "audio" | "precomputed";
+  text?: string;
+  provider?: "talkify" | "custom" | "precomputed" | "edge" | "gemini";
   audioKey?: string;
   providerConfig?: Record<string, unknown>;
 }
@@ -291,7 +316,19 @@ export interface SetSubtitleStyleConfig {
 }
 
 /** Card estilo post do Reddit; o título é sempre a primeira frase da narração. */
+/** Marca d'água do vídeo: imagem pequena no canto inferior direito, do primeiro ao último frame. */
+export interface ShowWatermarkConfig {
+  assetId?: string | null;
+  widthPercent?: number; // % da largura do vídeo
+  opacity?: number; // 0.1..1
+  marginPercent?: number; // % da largura
+}
+
+export type TitleCardField = "subreddit" | "username" | "timeAgo" | "flair" | "upvotes" | "comments";
+
 export interface ShowTitleCardConfig {
+  auto?: TitleCardField[]; // campos sorteados a cada vídeo quando vazios
+  avatarAssetId?: string | null; // imagem (asset) no lugar da letra do avatar
   subreddit?: string;
   username?: string;
   timeAgo?: string;
@@ -350,6 +387,7 @@ export type GraphNode =
   | { id: string; kind: "action"; type: "SetMusic"; config: SetMusicConfig }
   | { id: string; kind: "action"; type: "CameraEffect"; config: CameraEffectConfig }
   | { id: string; kind: "action"; type: "ShowTitleCard"; config: ShowTitleCardConfig }
+  | { id: string; kind: "action"; type: "ShowWatermark"; config: ShowWatermarkConfig }
   | { id: string; kind: "output"; type: "Render"; config: Record<string, never> };
 
 export interface Graph {

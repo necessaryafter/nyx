@@ -1,6 +1,7 @@
 import { pgTable, pgEnum, uuid, text, integer, numeric, boolean, jsonb, timestamp, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { templates } from "./templates";
+import type { SchedulerNarration } from "../../lib/schemas";
 
 export const schedulerModeEnum = pgEnum("scheduler_mode", ["single", "parts"]);
 
@@ -31,6 +32,8 @@ export const schedulers = pgTable("schedulers", {
   randomizeAssetOrder: boolean("randomize_asset_order").notNull().default(true),
   // 1 (default) = velocidade normal do vídeo de fundo; ex. 1.5 = 50% mais rápido.
   backgroundSpeed: numeric("background_speed", { mode: "number" }).notNull().default(1),
+  // null = usa a voz do nó Narração do template; preenchido = substitui a voz inteira.
+  narration: jsonb("narration").$type<SchedulerNarration>(),
   totalMinutes: numeric("total_minutes", { mode: "number" }),
   partsCount: integer("parts_count"),
   minutesPerPart: numeric("minutes_per_part", { mode: "number" }),
@@ -38,6 +41,8 @@ export const schedulers = pgTable("schedulers", {
   finalCtaTemplate: text("final_cta_template"),
   // false (default) = última parte fala "Parte N." igual as demais; true = fala "Parte final.".
   finalPartEnabled: boolean("final_part_enabled").notNull().default(false),
+  // Frase falada no lugar de "Parte N." na última parte (só vale com finalPartEnabled). Aceita {n} e {total}.
+  finalPartLabel: text("final_part_label").notNull().default("Parte final."),
   aiProvider: text("ai_provider").notNull().default("gemini"),
   aiModel: text("ai_model").notNull(),
   cronPattern: text("cron_pattern"),

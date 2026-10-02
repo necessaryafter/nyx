@@ -7,12 +7,24 @@ import { requireAuth } from "../auth/session";
 import { database } from "../database";
 import { assets } from "../database/schema/assets";
 import { storageClient as minio, presignClient, BUCKET_ASSETS } from "@nyx/shared";
-import { uploadAssetSchema, renameAssetSchema, paginationSchema } from "../lib/schemas";
+import { uploadAssetSchema, updateAssetSchema, resetAssetsSchema, paginationSchema } from "../lib/schemas";
+import { normalizeCategory, categoryCondition } from "../lib/assetCategory";
+import { resetUserAssets } from "../lib/assetReset";
 import { ChunkedUploadError, startChunkedUpload, writeUploadChunk, completeChunkedUpload } from "../lib/chunkedUpload";
 
 interface UploadMeta {
   name: string;
   type: "video" | "audio" | "text" | "image";
+  category: string | null;
+}
+
+function assetFilter(userId: string, f: { type?: string; search?: string; category?: string }) {
+  const conditions = [eq(assets.userId, userId)];
+  if (f.type) conditions.push(eq(assets.type, f.type as UploadMeta["type"]));
+  if (f.search) conditions.push(ilike(assets.name, `%${f.search}%`));
+  const cat = categoryCondition(f.category);
+  if (cat) conditions.push(cat);
+  return and(...conditions);
 }
 
 export const assetRoutes = new Elysia({ prefix: "/api/assets" })
@@ -22,7 +34,7 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
 
   .post("/upload/multipart/start", async ({ body, session, set }) => {
     const b = body as Record<string, unknown>;
-    const parsed = uploadAssetSchema.safeParse({ name: b.name, type: b.type });
+    const parsed = uploadAssetSchema.safeParse({ name: b.name, type: b.type, category: b.category });
     if (!parsed.success) {
       set.status = 400;
       return { error: "invalid fields", details: parsed.error.flatten() };
@@ -32,6 +44,7 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
       userId: session.user.id,
       name: parsed.data.name,
       type: parsed.data.type,
+      category: normalizeCategory(parsed.data.category),
     });
 
     return { assetId };
@@ -93,7 +106,7 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
 
     const [row] = await database
       .insert(assets)
-      .values({ id: assetId, userId, name: meta.name, type: meta.type, storageKey, sizeBytes: totalSize })
+      .values({ id: assetId, userId, name: meta.name, type: meta.type, category: meta.category ?? null, storageKey, sizeBytes: totalSize })
       .returning();
 
     set.status = 201;
@@ -114,6 +127,7 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
     const parsed = uploadAssetSchema.safeParse({
       name: formData.name,
       type: formData.type,
+      category: formData.category,
     });
 
     if (!parsed.success) {
@@ -136,6 +150,7 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
         userId,
         name,
         type,
+        category: normalizeCategory(parsed.data.category),
         storageKey,
         sizeBytes: file.size,
       })
@@ -152,13 +167,10 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
       set.status = 400;
       return { error: "invalid pagination", details: pagination.error.flatten() };
     }
-    const { limit, offset, type, search } = pagination.data;
+    const { limit, offset, type, search, category } = pagination.data;
     const userId = session.user.id;
 
-    const conditions = [eq(assets.userId, userId)];
-    if (type) conditions.push(eq(assets.type, type));
-    if (search) conditions.push(ilike(assets.name, `%${search}%`));
-    const where = and(...conditions);
+    const where = assetFilter(userId, { type, search, category });
 
     const [rows, [total]] = await Promise.all([
       database
@@ -175,6 +187,46 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
     ]);
 
     return { data: rows, total: total!.count, limit, offset };
+  })
+
+  // Categorias do usuário com contagem (respeita ?type=). `none` = quantos assets estão avulsos.
+  .get("/categories", async ({ session, query }) => {
+    const type = paginationSchema.shape.type.safeParse((query as Record<string, string>).type).data;
+    const where = type ? and(eq(assets.userId, session.user.id), eq(assets.type, type)) : eq(assets.userId, session.user.id);
+    const rows = await database
+      .select({ category: assets.category, count: count() })
+      .from(assets)
+      .where(where)
+      .groupBy(assets.category);
+    const none = rows.find((r) => r.category === null)?.count ?? 0;
+    const categories = rows
+      .filter((r): r is { category: string; count: number } => r.category !== null)
+      .sort((a, b) => a.category.localeCompare(b.category, "pt-BR"));
+    return { categories, none, total: rows.reduce((n, r) => n + r.count, 0) };
+  })
+
+  // Todos os ids (e nomes) de um filtro, sem paginar — alimenta o "marcar todos" do seletor.
+  .get("/ids", async ({ session, query, set }) => {
+    const parsed = paginationSchema.omit({ limit: true, offset: true }).safeParse(query);
+    if (!parsed.success) {
+      set.status = 400;
+      return { error: "invalid filter", details: parsed.error.flatten() };
+    }
+    const data = await database
+      .select({ id: assets.id, name: assets.name })
+      .from(assets)
+      .where(assetFilter(session.user.id, parsed.data))
+      .orderBy(assets.name);
+    return { data };
+  })
+
+  // Apaga todos os assets do usuário e limpa as referências em schedulers/templates.
+  .post("/reset", async ({ body, session, set }) => {
+    if (!resetAssetsSchema.safeParse(body).success) {
+      set.status = 400;
+      return { error: 'send {"confirm":"RESETAR"} to confirm' };
+    }
+    return resetUserAssets(session.user.id);
   })
 
   // Get presigned URL for an asset
@@ -194,9 +246,9 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
     return { url };
   })
 
-  // Renomear asset
+  // Renomear e/ou mover de categoria
   .put("/:id", async ({ params, body, session, set }) => {
-    const parsed = renameAssetSchema.safeParse(body);
+    const parsed = updateAssetSchema.safeParse(body);
     if (!parsed.success) {
       set.status = 400;
       return { error: "invalid fields", details: parsed.error.flatten() };
@@ -215,7 +267,10 @@ export const assetRoutes = new Elysia({ prefix: "/api/assets" })
 
     const [updated] = await database
       .update(assets)
-      .set({ name: parsed.data.name })
+      .set({
+        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+        ...(parsed.data.category !== undefined && { category: normalizeCategory(parsed.data.category) }),
+      })
       .where(eq(assets.id, params.id))
       .returning();
 

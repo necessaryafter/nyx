@@ -8,6 +8,7 @@ import {
   Image,
   ImagePlay,
   MessageSquareText,
+  Stamp,
   Mic,
   Music,
   Pilcrow,
@@ -21,7 +22,7 @@ import {
 import type { NodeProps } from "@xyflow/react";
 import { BaseNode, getNodeCategory } from "./BaseNode";
 import { NODE_DEFINITIONS } from "../../../lib/nodeDefaults";
-import type { NodeType } from "../../../lib/types";
+import type { NodeType, ShowTitleCardConfig } from "../../../lib/types";
 
 const ICONS: Record<NodeType, React.ReactNode> = {
   NarrationSource: <Mic className="h-4 w-4" />,
@@ -41,6 +42,7 @@ const ICONS: Record<NodeType, React.ReactNode> = {
   SetMusic: <Music className="h-4 w-4" />,
   CameraEffect: <Sparkles className="h-4 w-4" />,
   ShowTitleCard: <MessageSquareText className="h-4 w-4" />,
+  ShowWatermark: <Stamp className="h-4 w-4" />,
   Render: <Clapperboard className="h-4 w-4" />,
 };
 
@@ -54,7 +56,11 @@ function describe(type: NodeType, config: Record<string, unknown>) {
   if (type === "ShowOverlay") return `${config.durationMs ?? 1000}ms`;
   if (type === "PlaySfx") return config.assetId ? "sfx selecionado" : "sem sfx";
   if (type === "CameraEffect") return "zoom/shake/transition";
-  if (type === "ShowTitleCard") return String(config.subreddit ?? "r/historias");
+  if (type === "ShowWatermark") return (config as { assetId?: string | null }).assetId ? "com imagem" : "escolha a imagem";
+  if (type === "ShowTitleCard") {
+    const card = config as ShowTitleCardConfig;
+    return card.subreddit?.trim() || (card.auto?.includes("subreddit") ? "automático" : "r/historias");
+  }
   return "";
 }
 
@@ -95,5 +101,6 @@ export const nodeTypes = {
   SetMusic: V2Node,
   CameraEffect: V2Node,
   ShowTitleCard: V2Node,
+  ShowWatermark: V2Node,
   Render: V2Node,
 };

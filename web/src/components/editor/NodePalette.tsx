@@ -11,6 +11,7 @@ import {
   ImagePlay,
   Info,
   MessageSquareText,
+  Stamp,
   Mic,
   Music,
   Pilcrow,
@@ -115,6 +116,7 @@ const NODE_SECTIONS = [
       { type: "SetMusic" as NodeType, label: "Ajustar trilha", icon: Music, color: "text-cyan-400" },
       { type: "CameraEffect" as NodeType, label: "Efeito de câmera", icon: Sparkles, color: "text-cyan-400" },
       { type: "ShowTitleCard" as NodeType, label: "Card de título", icon: MessageSquareText, color: "text-cyan-400" },
+      { type: "ShowWatermark" as NodeType, label: "Marca d'água", icon: Stamp, color: "text-cyan-400" },
     ],
   },
   {

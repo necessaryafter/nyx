@@ -13,6 +13,8 @@ import {
   Check,
   X,
   Play,
+  FolderUp,
+  Folder,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Skeleton } from "../components/ui/Skeleton";
@@ -24,21 +26,25 @@ import {
   useRenameAsset,
   useUploadAsset,
   useAssetUrl,
+  useAssetCategories,
+  useMoveAsset,
 } from "../hooks/useAssets";
 import { usePendingImports, useAssetImportsWebSocket } from "../hooks/useAssetImports";
 import { UploadProgress, type UploadEntry } from "../components/assets/UploadProgress";
 import { ImportButton } from "../components/assets/ImportButton";
 import { AssetGroupCard } from "../components/assets/AssetGroupCard";
+import { CategoryFilter } from "../components/assets/CategoryFilter";
+import { ResetAssetsButton } from "../components/assets/ResetAssetsButton";
 import { FallbackChoiceModal } from "../components/assets/FallbackChoiceModal";
 import { ImportReviewModal } from "../components/assets/ImportReviewModal";
 import { VideoPreviewModal } from "../components/assets/VideoPreviewModal";
-import type { Asset } from "../lib/types";
+import { NO_CATEGORY, type Asset } from "../lib/types";
 
-type TypeFilter = "all" | "video" | "audio" | "text";
+type TypeFilter = "all" | "video" | "audio" | "text" | "image";
 
-const ALLOWED_MIME_PREFIXES = ["video/", "audio/"];
+const ALLOWED_MIME_PREFIXES = ["video/", "audio/", "image/"];
 const ALLOWED_MIME_EXACT = ["text/plain"];
-const ALLOWED_EXTENSIONS = [".mp4", ".webm", ".mp3", ".wav", ".ogg", ".m4a", ".txt"];
+const ALLOWED_EXTENSIONS = [".mp4", ".webm", ".mp3", ".wav", ".ogg", ".m4a", ".txt", ".png", ".jpg", ".jpeg", ".webp"];
 
 function isAllowedFile(file: File): boolean {
   if (ALLOWED_MIME_PREFIXES.some((p) => file.type.startsWith(p))) return true;
@@ -71,6 +77,15 @@ function timeAgo(dateStr: string) {
   return `há ${d} dia${d > 1 ? "s" : ""}`;
 }
 
+function ImageThumbnail({ id }: { id: string }) {
+  const url = useAssetUrl(id, true).data?.url;
+  return url ? (
+    <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" />
+  ) : (
+    <div className="flex h-full items-center justify-center bg-nyx-elevated" />
+  );
+}
+
 function AssetThumbnail({ asset, onPlay }: { asset: Asset; onPlay?: () => void }) {
   if (asset.type === "video") {
     return (
@@ -85,6 +100,7 @@ function AssetThumbnail({ asset, onPlay }: { asset: Asset; onPlay?: () => void }
       </button>
     );
   }
+  if (asset.type === "image") return <ImageThumbnail id={asset.id} />;
   if (asset.type === "audio") {
     return (
       <div className="flex h-full items-center justify-center bg-gradient-to-br from-nyx-cyan-500/20 to-nyx-orange-500/20">
@@ -101,13 +117,17 @@ function AssetThumbnail({ asset, onPlay }: { asset: Asset; onPlay?: () => void }
 
 function AssetCardMenu({
   asset,
+  categories,
   onDelete,
   onRename,
+  onMove,
   onOpenChange,
 }: {
   asset: Asset;
+  categories: string[];
   onDelete: () => void;
   onRename: (name: string) => void;
+  onMove: (category: string | null) => void;
   onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpenState] = useState(false);
@@ -117,6 +137,36 @@ function AssetCardMenu({
   };
   const [renaming, setRenaming] = useState(false);
   const [nameValue, setNameValue] = useState(asset.name);
+  const [moving, setMoving] = useState(false);
+  const [categoryValue, setCategoryValue] = useState(asset.category ?? "");
+
+  if (moving) {
+    const save = () => {
+      onMove(categoryValue.trim() || null);
+      setMoving(false);
+    };
+    return (
+      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <input
+          autoFocus
+          list={`cats-${asset.id}`}
+          value={categoryValue}
+          placeholder="Categoria (vazio = avulso)"
+          onChange={(e) => setCategoryValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+            if (e.key === "Escape") setMoving(false);
+          }}
+          className="h-7 w-full rounded border border-nyx-cyan-500 bg-nyx-deep px-2 text-xs text-nyx-text-primary focus:outline-none"
+        />
+        <datalist id={`cats-${asset.id}`}>
+          {categories.map((c) => <option key={c} value={c} />)}
+        </datalist>
+        <button onClick={save} className="text-nyx-cyan-500 hover:opacity-80"><Check className="h-4 w-4" /></button>
+        <button onClick={() => setMoving(false)} className="text-nyx-text-muted hover:opacity-80"><X className="h-4 w-4" /></button>
+      </div>
+    );
+  }
 
   if (renaming) {
     return (
@@ -187,6 +237,17 @@ function AssetCardMenu({
             <button
               onClick={() => {
                 setOpen(false);
+                setCategoryValue(asset.category ?? "");
+                setMoving(true);
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-nyx-text-secondary hover:bg-nyx-hover hover:text-nyx-text-primary"
+            >
+              <Folder className="h-3.5 w-3.5" />
+              Categoria
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
                 onDelete();
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10"
@@ -210,6 +271,8 @@ export function AssetCard({
 }) {
   const deleteAsset = useDeleteAsset();
   const renameAsset = useRenameAsset();
+  const moveAsset = useMoveAsset();
+  const categories = useAssetCategories().data?.categories.map((c) => c.category) ?? [];
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [watching, setWatching] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -253,15 +316,23 @@ export function AssetCard({
               {asset.name}
             </p>
             <p className="mt-0.5 text-xs text-nyx-text-muted">
-              {asset.type === "video" ? "Vídeo" : asset.type === "audio" ? "Áudio" : "Texto"}{" "}
+              {asset.type === "video" ? "Vídeo" : asset.type === "audio" ? "Áudio" : asset.type === "image" ? "Imagem" : "Texto"}{" "}
               · {formatBytes(asset.sizeBytes)}
             </p>
+            {asset.category && (
+              <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-nyx-cyan-500" title={asset.category}>
+                <Folder className="h-3 w-3 shrink-0" />
+                {asset.category}
+              </p>
+            )}
             <p className="text-xs text-nyx-text-muted">{timeAgo(asset.createdAt)}</p>
           </div>
           <AssetCardMenu
             asset={asset}
+            categories={categories}
             onDelete={() => setConfirmDelete(true)}
             onRename={(name) => renameAsset.mutate({ id: asset.id, name })}
+            onMove={(category) => moveAsset.mutate({ id: asset.id, category })}
             onOpenChange={setMenuOpen}
           />
         </div>
@@ -343,7 +414,7 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
         ref={inputRef}
         type="file"
         multiple
-        accept="video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4,text/plain,.mp4,.webm,.mp3,.wav,.ogg,.m4a,.txt"
+        accept="video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4,text/plain,image/png,image/jpeg,image/webp,.mp4,.webm,.mp3,.wav,.ogg,.m4a,.txt,.png,.jpg,.jpeg,.webp"
         className="hidden"
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
@@ -361,7 +432,7 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
           Arraste arquivos aqui ou clique para selecionar
         </p>
         <p className="mt-1 text-xs text-nyx-text-muted">
-          Formatos: .mp4, .webm, .mp3, .wav, .txt · Máx. 500MB por arquivo
+          Formatos: .mp4, .webm, .mp3, .wav, .txt, .png, .jpg, .webp · Máx. 500MB por arquivo
         </p>
       </div>
     </div>
@@ -388,11 +459,27 @@ function groupAssets(list: Asset[]): GridItem[] {
   return items;
 }
 
+// Categoria de cada arquivo ao subir uma pasta, igual ao que já existe no PC: a pasta onde o arquivo está
+// vira a categoria. Arquivos soltos na raiz da pasta escolhida ficam avulsos — a não ser que a pasta
+// escolhida não tenha subpastas, aí ela própria é a categoria.
+function folderCategories(files: File[]): Map<File, string | null> {
+  const rel = (f: File) => ((f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name).split("/");
+  const hasSubfolders = files.some((f) => rel(f).length > 2);
+  return new Map(
+    files.map((f) => {
+      const parts = rel(f);
+      if (parts.length >= 3) return [f, parts[parts.length - 2]!];
+      return [f, parts.length === 2 && !hasSubfolders ? parts[0]! : null];
+    }),
+  );
+}
+
 const TYPE_TABS: { label: string; value: TypeFilter }[] = [
   { label: "Todos", value: "all" },
   { label: "Vídeos", value: "video" },
   { label: "Áudios", value: "audio" },
   { label: "Textos", value: "text" },
+  { label: "Imagens", value: "image" },
 ];
 
 export function AssetsPage() {
@@ -400,6 +487,9 @@ export function AssetsPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [category, setCategory] = useState<string | undefined>(undefined); // undefined = todas, NO_CATEGORY = avulsos
+  const [uploadCategory, setUploadCategory] = useState("");
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [uploads, setUploads] = useState<UploadEntry[]>([]);
   const currentUploadIdxRef = useRef<number>(-1);
 
@@ -413,7 +503,15 @@ export function AssetsPage() {
     page,
     typeFilter === "all" ? undefined : typeFilter,
     debouncedSearch || undefined,
+    category,
   );
+  const categoryList = useAssetCategories().data?.categories.map((c) => c.category) ?? [];
+
+  const pickCategory = (value: string | undefined) => {
+    setCategory(value);
+    setPage(0);
+    if (value !== undefined) setUploadCategory(value === NO_CATEGORY ? "" : value); // próximo upload já cai na categoria aberta
+  };
 
   useAssetImportsWebSocket();
   const pendingImports = usePendingImports().data?.data ?? [];
@@ -446,7 +544,7 @@ export function AssetsPage() {
   };
 
   const handleFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], categoryOf?: Map<File, string | null>) => {
       const rejected = files.filter((f) => !isAllowedFile(f));
       const allowed = files.filter(isAllowedFile);
 
@@ -474,7 +572,8 @@ export function AssetsPage() {
         const globalIdx = uploadOffset + i;
         currentUploadIdxRef.current = globalIdx;
         try {
-          await uploadAsset.mutateAsync(allowed[i]!);
+          const file = allowed[i]!;
+          await uploadAsset.mutateAsync({ file, category: categoryOf ? (categoryOf.get(file) ?? null) : uploadCategory });
           setUploads((prev) =>
             prev.map((u, idx) => (idx === globalIdx ? { ...u, done: true } : u)),
           );
@@ -495,7 +594,7 @@ export function AssetsPage() {
         3000,
       );
     },
-    [uploadAsset, uploads.length],
+    [uploadAsset, uploads.length, uploadCategory],
   );
 
   const total = assets.data?.total ?? 0;
@@ -536,7 +635,7 @@ export function AssetsPage() {
             <input
               type="file"
               multiple
-              accept="video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4,text/plain,.mp4,.webm,.mp3,.wav,.ogg,.m4a,.txt"
+              accept="video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4,text/plain,image/png,image/jpeg,image/webp,.mp4,.webm,.mp3,.wav,.ogg,.m4a,.txt,.png,.jpg,.jpeg,.webp"
               className="hidden"
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? []);
@@ -550,6 +649,48 @@ export function AssetsPage() {
           </label>
 
           <ImportButton />
+        </div>
+      </motion.div>
+
+      {/* Categoria do upload, upload de pasta e reset */}
+      <motion.div className="flex flex-wrap items-center gap-3" {...fade(0.03)}>
+        <label className="flex items-center gap-2 text-xs text-nyx-text-muted">
+          Subir para a categoria
+          <input
+            list="upload-categories"
+            value={uploadCategory}
+            onChange={(e) => setUploadCategory(e.target.value)}
+            placeholder="vazio = avulso"
+            className="h-8 w-44 rounded-lg border border-nyx-border bg-nyx-surface px-2.5 text-sm text-nyx-text-primary placeholder:text-nyx-text-muted focus:border-nyx-cyan-500 focus:outline-none"
+          />
+          <datalist id="upload-categories">
+            {categoryList.map((c) => <option key={c} value={c} />)}
+          </datalist>
+        </label>
+
+        <input
+          ref={folderInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          {...({ webkitdirectory: "" } as object)}
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []).filter(isAllowedFile);
+            e.target.value = "";
+            if (files.length) handleFiles(files, folderCategories(files));
+          }}
+        />
+        <button
+          onClick={() => folderInputRef.current?.click()}
+          title="Cada subpasta vira uma categoria; arquivos soltos na raiz ficam avulsos"
+          className="inline-flex items-center gap-2 rounded-lg border border-nyx-border px-3 py-2 text-sm text-nyx-text-primary transition-colors hover:bg-nyx-elevated"
+        >
+          <FolderUp className="h-4 w-4" />
+          Subir pasta
+        </button>
+
+        <div className="ml-auto">
+          <ResetAssetsButton total={counts.data?.all ?? 0} />
         </div>
       </motion.div>
 
@@ -591,6 +732,8 @@ export function AssetsPage() {
           );
         })}
       </motion.div>
+
+      <CategoryFilter type={typeFilter === "all" ? undefined : typeFilter} value={category} onChange={pickCategory} />
 
       {/* Upload progress */}
       <UploadProgress uploads={uploads} />
@@ -653,7 +796,7 @@ export function AssetsPage() {
           <FolderOpen className="h-16 w-16 text-nyx-text-muted opacity-40" />
           <div>
             <p className="text-lg font-medium text-nyx-text-primary">
-              {search || typeFilter !== "all"
+              {search || typeFilter !== "all" || category !== undefined
                 ? "Nenhum asset encontrado"
                 : "Nenhum asset ainda"}
             </p>
@@ -663,7 +806,7 @@ export function AssetsPage() {
                 : "Faça upload de vídeos, áudios e textos para usar nos seus templates"}
             </p>
           </div>
-          {search || typeFilter !== "all" ? (
+          {search || typeFilter !== "all" || category !== undefined ? (
             <Button
               variant="secondary"
               size="sm"
@@ -671,6 +814,7 @@ export function AssetsPage() {
                 setSearch("");
                 setDebouncedSearch("");
                 setTypeFilter("all");
+                setCategory(undefined);
               }}
             >
               Limpar filtros

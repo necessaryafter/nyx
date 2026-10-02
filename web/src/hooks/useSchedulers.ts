@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { SchedulerNarration } from "../lib/types";
 import { useEffect, useRef } from "react";
 import { api } from "../lib/api";
 import type {
@@ -23,9 +24,11 @@ export interface SchedulerInput {
   noRepeatAssetsAcrossParts?: boolean;
   randomizeAssetOrder?: boolean;
   backgroundSpeed?: number;
+  narration?: SchedulerNarration | null;
   ctaTemplate?: string;
   finalCtaTemplate?: string;
   finalPartEnabled?: boolean;
+  finalPartLabel?: string;
   aiModel: string;
   cronPattern?: string | null;
   timezone?: string;
@@ -137,6 +140,7 @@ export function usePreviewSeriesScript() {
       ctaTemplate?: string;
       finalCtaTemplate?: string;
       finalPartEnabled?: boolean;
+      finalPartLabel?: string;
     }) => api.post<SeriesScript>("/api/ai/series-script", input),
   });
 }

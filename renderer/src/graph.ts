@@ -49,14 +49,20 @@ export type BlueprintNode =
   | { id: string; kind: "action"; type: "SetMusic"; config: SetMusicConfig }
   | { id: string; kind: "action"; type: "CameraEffect"; config: CameraEffectConfig }
   | { id: string; kind: "action"; type: "ShowTitleCard"; config: ShowTitleCardConfig }
+  | { id: string; kind: "action"; type: "ShowWatermark"; config: ShowWatermarkConfig }
   | { id: string; kind: "output"; type: "Render"; config: Record<string, never> };
 
 export interface NarrationSourceConfig {
   mode?: "job-input" | "tts" | "audio" | "precomputed";
   text?: string;
-  provider?: "talkify" | "xtts" | "custom" | "precomputed" | "edge";
+  provider?: "talkify" | "xtts" | "custom" | "precomputed" | "edge" | "gemini";
   voice?: string;
   speed?: number;
+  // Só gemini:
+  model?: string;
+  paceMode?: "style" | "slider"; // style = ritmo pelo estilo; slider = atempo pelo speed
+  stylePreset?: "rapido" | "moderado" | "lento" | "custom";
+  style?: string; // texto livre quando stylePreset = "custom"
   audioKey?: string;
   providerConfig?: Record<string, unknown>;
 }
@@ -127,8 +133,23 @@ export interface SetSubtitleStyleConfig {
   style?: SubtitleStyle;
 }
 
+/** Marca d'água: imagem pequena no canto inferior direito, do primeiro ao último frame. */
+export interface ShowWatermarkConfig {
+  assetId?: string | null; // sem imagem escolhida (ou asset sumido) = sem marca d'água
+  widthPercent?: number; // largura em % da largura do vídeo (default 14)
+  opacity?: number; // 0.1..1 (default 1)
+  marginPercent?: number; // distância das bordas direita e de baixo, em % da largura (default 4)
+}
+
+export type TitleCardField = "subreddit" | "username" | "timeAgo" | "flair" | "upvotes" | "comments";
+
 /** Card estilo post do Reddit; por padrão o título é a primeira frase da narração. */
 export interface ShowTitleCardConfig {
+  // Campos marcados como automáticos: se estiverem vazios, são sorteados a cada render (veja resolveCardConfig).
+  // Valor preenchido sempre vence — é assim que o scheduler (IA) e campos fixos do template continuam valendo.
+  auto?: TitleCardField[];
+  // Asset (imagem) que substitui a letra do avatar. O render recorta no quadrado central e redimensiona pro círculo.
+  avatarAssetId?: string | null;
   subreddit?: string;
   username?: string;
   timeAgo?: string;

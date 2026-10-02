@@ -17,7 +17,8 @@ import {
 } from "../hooks/useSchedulers";
 import { useCreditsBalance } from "../hooks/useCredits";
 import { cadenceToCron, cronToCadence, type CadenceValue } from "../lib/scheduler";
-import type { SeriesScript } from "../lib/types";
+import type { NarrationSourceConfig, SchedulerNarration, SeriesScript } from "../lib/types";
+import { VoiceFields } from "../components/VoiceFields";
 
 const inputCls =
   "h-9 w-full rounded-lg border border-nyx-border bg-nyx-void px-2.5 text-sm text-nyx-text-primary placeholder:text-nyx-text-muted focus:border-nyx-cyan-500 focus:outline-none";
@@ -53,6 +54,7 @@ export function SchedulerFormPage() {
   const [noRepeatAssetsAcrossParts, setNoRepeatAssetsAcrossParts] = useState(false);
   const [randomizeAssetOrder, setRandomizeAssetOrder] = useState(true);
   const [backgroundSpeed, setBackgroundSpeed] = useState(1);
+  const [narration, setNarration] = useState<SchedulerNarration | null>(null);
   const [mode, setMode] = useState<"single" | "parts">("parts");
   const [totalMinutes, setTotalMinutes] = useState(3);
   const [partsCount, setPartsCount] = useState(4);
@@ -60,6 +62,7 @@ export function SchedulerFormPage() {
   const [ctaTemplate, setCtaTemplate] = useState("Curta e comente para a parte {next}.");
   const [finalCtaTemplate, setFinalCtaTemplate] = useState("");
   const [finalPartEnabled, setFinalPartEnabled] = useState(false);
+  const [finalPartLabel, setFinalPartLabel] = useState("");
   const [aiModel, setAiModel] = useState("");
   const [cadence, setCadence] = useState<CadenceValue>({ kind: "manual" });
   const [runOnCreate, setRunOnCreate] = useState(!isEdit);
@@ -80,6 +83,7 @@ export function SchedulerFormPage() {
     setNoRepeatAssetsAcrossParts(s.noRepeatAssetsAcrossParts);
     setRandomizeAssetOrder(s.randomizeAssetOrder);
     setBackgroundSpeed(s.backgroundSpeed);
+    setNarration(s.narration ?? null);
     setMode(s.mode);
     if (s.totalMinutes != null) setTotalMinutes(s.totalMinutes);
     if (s.partsCount != null) setPartsCount(s.partsCount);
@@ -87,6 +91,7 @@ export function SchedulerFormPage() {
     setCtaTemplate(s.ctaTemplate);
     setFinalCtaTemplate(s.finalCtaTemplate ?? "");
     setFinalPartEnabled(s.finalPartEnabled);
+    setFinalPartLabel(s.finalPartLabel === "Parte final." ? "" : s.finalPartLabel); // vazio = padrão
     setAiModel(s.aiModel);
     setCadence(cronToCadence(s.cronPattern));
   }, [existing.data]);
@@ -98,7 +103,7 @@ export function SchedulerFormPage() {
 
   const hasSceneSource = !!selectedTemplate.data?.graph.nodes.some((n) => n.type === "SceneSource");
   const narrationNode = selectedTemplate.data?.graph.nodes.find((n) => n.type === "NarrationSource");
-  const narrationCfg = narrationNode?.config as { provider?: string; voice?: string; speed?: number } | undefined;
+  const narrationCfg = narrationNode?.config as NarrationSourceConfig | undefined;
 
   const estimate = useSchedulerEstimate(
     mode === "single" ? { mode, totalMinutes } : { mode, partsCount, minutesPerPart },
@@ -124,11 +129,13 @@ export function SchedulerFormPage() {
       noRepeatAssetsAcrossParts,
       randomizeAssetOrder,
       backgroundSpeed,
+      narration,
       mode,
       ...(mode === "single" ? { totalMinutes } : { partsCount, minutesPerPart }),
       ctaTemplate,
       finalCtaTemplate: finalCtaTemplate.trim() || undefined,
       finalPartEnabled,
+      finalPartLabel: finalPartLabel.trim(),
       aiModel,
       cronPattern: cadenceToCron(cadence),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -161,6 +168,7 @@ export function SchedulerFormPage() {
         ctaTemplate,
         finalCtaTemplate: finalCtaTemplate.trim() || undefined,
         finalPartEnabled,
+        finalPartLabel: finalPartLabel.trim() || undefined,
       });
       setPreviewResult(result);
     } catch (err) {
@@ -201,7 +209,7 @@ export function SchedulerFormPage() {
             </select>
             {narrationCfg && !hasSceneSource && (
               <p className="text-xs text-nyx-text-muted">
-                Narração: {narrationCfg.provider === "edge" ? "Edge TTS" : "Talkify"}
+                Narração do template: {narrationCfg.provider === "edge" ? "Edge TTS" : narrationCfg.provider === "gemini" ? "Gemini TTS" : "Talkify"}
                 {narrationCfg.voice ? ` · ${narrationCfg.voice}` : ""}
                 {narrationCfg.speed ? ` · ${Math.round((narrationCfg.speed - 1) * 100)}%` : ""}
               </p>
@@ -214,7 +222,29 @@ export function SchedulerFormPage() {
             )}
           </Field>
 
-          <Field label="Tema" hint={`${theme.trim().length}/5000 caracteres (mínimo 10)`}>
+          <Field label="Voz" hint="Por padrão usa a voz do nó Narração do template. Escolher aqui troca só neste scheduler.">
+            <select
+              value={narration?.provider ?? ""}
+              onChange={(e) => setNarration(e.target.value ? { provider: e.target.value as "edge" | "gemini" } : null)}
+              className={inputCls}
+            >
+              <option value="">Usar a do template</option>
+              <option value="edge">Edge TTS (gratuito)</option>
+              <option value="gemini">Gemini TTS</option>
+            </select>
+            {narration && (
+              <div className="mt-2 rounded-lg border border-nyx-border p-3">
+                <VoiceFields
+                  provider={narration.provider}
+                  value={narration}
+                  onChange={(patch) => setNarration((n) => (n ? { ...n, ...patch } : n))}
+                  inputCls={inputCls}
+                />
+              </div>
+            )}
+          </Field>
+
+          <Field label="Tema" hint={`${theme.trim().length}/5000 caracteres (mínimo 10) · {a|b|c} sorteia uma opção a cada execução`}>
             <textarea
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
@@ -248,7 +278,7 @@ export function SchedulerFormPage() {
                   Não repetir vídeo no mesmo lote
                 </label>
                 <p className="pl-5 text-[11px] text-nyx-text-muted">
-                  Divide os vídeos entre as partes da execução em vez de repetir a lista inteira em cada uma.
+                  Cada parte começa num vídeo diferente e só repete um vídeo depois de usar todos.
                 </p>
                 <label className="flex items-center justify-between text-xs text-nyx-text-secondary">
                   <span>Velocidade do vídeo de fundo</span>
@@ -335,11 +365,19 @@ export function SchedulerFormPage() {
                   checked={finalPartEnabled}
                   onChange={(e) => setFinalPartEnabled(e.target.checked)}
                 />
-                Última parte fala "Parte final."
+                Última parte fala uma frase própria (padrão "Parte final.")
               </label>
               <p className="pl-5 text-[11px] text-nyx-text-muted">
                 Desmarcado = a última parte fala "Parte {"{N}"}." igual as demais.
               </p>
+              {finalPartEnabled && (
+                <CtaInput
+                  label="O que a última parte fala"
+                  value={finalPartLabel}
+                  onChange={setFinalPartLabel}
+                  placeholder="Parte final."
+                />
+              )}
             </>
           )}
           <CtaInput label="CTA da última parte (opcional)" value={finalCtaTemplate} onChange={setFinalCtaTemplate} placeholder="Deixa nos comentários o que achou." />

@@ -83,12 +83,13 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
     {
       body: t.Object({
         model: t.String(),
-        theme: t.String({ minLength: 10, maxLength: 2000 }),
+        theme: t.String({ minLength: 10, maxLength: 5000 }),
         parts: t.Integer({ minimum: 1, maximum: 10 }),
         minutesPerPart: t.Number({ minimum: 0.5, maximum: 10 }),
         ctaTemplate: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
         finalCtaTemplate: t.Optional(t.String({ maxLength: 200 })),
         finalPartEnabled: t.Optional(t.Boolean()),
+        finalPartLabel: t.Optional(t.String({ maxLength: 100 })),
         avoidTitles: t.Optional(t.Array(t.String())),
       }),
     },

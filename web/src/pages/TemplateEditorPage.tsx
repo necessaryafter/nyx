@@ -587,7 +587,7 @@ function EditorInner({ templateId }: { templateId: string | undefined }) {
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: "100%", opacity: 0 }}
                   transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute right-3 top-3 w-72 z-10 overflow-hidden rounded-xl shadow-2xl max-h-[calc(100%-24px)]"
+                  className="absolute right-3 top-3 flex w-72 z-10 flex-col overflow-hidden rounded-xl shadow-2xl max-h-[calc(100%-24px)]"
                 >
                   <PropertiesPanel />
                 </motion.div>

@@ -10,9 +10,12 @@ export const assets = pgTable("assets", {
   type: assetTypeEnum("type").notNull(),
   storageKey: text("storage_key").notNull(),
   sizeBytes: bigint("size_bytes", { mode: "number" }),
+  // Pasta lógica do asset (ex.: "prensa"). Nulo = asset avulso, fora de qualquer categoria.
+  category: text("category"),
   importBatchId: uuid("import_batch_id").references(() => assetImportBatches.id, { onDelete: "set null" }), // asset-import: nulo = asset normal
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (t) => [
   index("assets_user_id_idx").on(t.userId),
   index("assets_import_batch_id_idx").on(t.importBatchId),
+  index("assets_user_category_idx").on(t.userId, t.category),
 ]);

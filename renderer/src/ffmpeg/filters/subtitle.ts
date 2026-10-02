@@ -16,13 +16,27 @@ export async function buildSubtitleFilter(
   height: number,
   workDir: string,
 ): Promise<string> {
-  const groups = groupWords(timestamps, wordsPerGroup);
+  const groups = groupWords(cleanSubtitleWords(timestamps), wordsPerGroup);
   const assContent = buildASS(groups, style, width, height);
   const assPath = join(workDir, "subtitles.ass");
   await writeFile(assPath, assContent, "utf-8");
 
   const normalized = assPath.replace(/\\/g, "/").replace(/:/g, "\\\\:");
   return `ass=filename=${normalized}:original_size=${width}x${height}`;
+}
+
+/**
+ * Tira as aspas só do texto da legenda (a narração não muda). Sobra que não é palavra (o `",`
+ * solto de `indo?", perguntei`) sai da tela e o tempo dela fica com a palavra anterior.
+ */
+export function cleanSubtitleWords(timestamps: WordTimestamp[]): WordTimestamp[] {
+  const out: WordTimestamp[] = [];
+  for (const t of timestamps) {
+    const word = t.word.replace(/["“”«»]/g, "");
+    if (/[\p{L}\p{N}]/u.test(word)) out.push({ ...t, word });
+    else if (out.length) out[out.length - 1] = { ...out[out.length - 1]!, endMs: Math.max(out[out.length - 1]!.endMs, t.endMs) };
+  }
+  return out;
 }
 
 function groupWords(timestamps: WordTimestamp[], perGroup: number): WordGroup[] {

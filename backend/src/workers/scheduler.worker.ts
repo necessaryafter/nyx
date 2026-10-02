@@ -7,7 +7,7 @@ import { templates } from "../database/schema/templates";
 import { assets } from "../database/schema/assets";
 import { audioQueue, renderQueue, audioQueueEvents, renderQueueEvents } from "../lib/queue";
 import { createDraftJob, startAudio, startRender } from "../lib/jobs.service";
-import { applySchedulerOverrides, planPartAssetIds, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
+import { applySchedulerOverrides, planPartAssetIds, randomEngagement, resolveSchedulerVoice, type SchedulerCardContext } from "../lib/scheduler/overrides";
 import { estimateRun } from "../lib/scheduler/estimate";
 import { generateSeriesScript, type SeriesScript } from "../lib/ai/seriesScript";
 import { resolveGeminiKey } from "../lib/ai/gemini";
@@ -57,15 +57,14 @@ async function runOnePart(
     partAssetIds: string[];
     title: string;
     partsTotal: number;
-    provider: "talkify" | "edge";
-    voice: string | undefined;
-    speed: number | undefined;
+    voice: ReturnType<typeof resolveSchedulerVoice>;
     card: SchedulerCardContext;
   },
 ): Promise<void> {
   const overriddenGraph = applySchedulerOverrides(ctx.graph, {
     assetIds: ctx.partAssetIds,
-    assetMode: ctx.scheduler.randomizeAssetOrder ? "random-loop" : "sequential",
+    // noRepeat: a ordem já vem planejada por parte (planPartAssetIds) — o renderer não pode reembaralhar.
+    assetMode: ctx.scheduler.randomizeAssetOrder && !ctx.scheduler.noRepeatAssetsAcrossParts ? "random-loop" : "sequential",
     musicAssetIds: ctx.scheduler.musicAssetIds,
     backgroundSpeed: ctx.scheduler.backgroundSpeed,
     title: ctx.title,
@@ -80,11 +79,9 @@ async function runOnePart(
   });
 
   const { bullJobId: audioBullJobId } = await startAudio(ctx.userId, job, {
+    ...ctx.voice,
     type: "tts",
     text: part.text,
-    provider: ctx.provider,
-    voice: ctx.voice,
-    speed: ctx.speed,
   });
 
   const audioBullJob = await audioQueue.getJob(audioBullJobId);
@@ -198,6 +195,7 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
       ctaTemplate: scheduler.ctaTemplate,
       finalCtaTemplate: scheduler.finalCtaTemplate ?? undefined,
       finalPartEnabled: scheduler.finalPartEnabled,
+      finalPartLabel: scheduler.finalPartLabel,
       avoidTitles,
       avoidPremises,
     });
@@ -230,7 +228,7 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
 
   const narrationNode = graphParsed.data.nodes.find((n) => n.type === "NarrationSource");
   const narrationCfg = narrationNode?.type === "NarrationSource" ? narrationNode.config : undefined;
-  const provider = narrationCfg?.provider === "edge" ? ("edge" as const) : ("talkify" as const);
+  const voice = resolveSchedulerVoice(narrationCfg, scheduler.narration);
 
   // Identidade do post: subreddit/usuário/tag vêm da IA (junto do roteiro),
   // votos/comentários/tempo são só cosméticos — gerados uma vez aqui e
@@ -251,6 +249,7 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
   });
 
   let partsDone = 0;
+  const partErrors: string[] = []; // vão pro run.error — é o que aparece pro usuário na execução
 
   for (const part of script.parts) {
     try {
@@ -263,17 +262,23 @@ async function handleRun(bullJob: BullJob<SchedulerRunJobData>): Promise<void> {
         partAssetIds: assetPlan[part.index - 1] ?? [],
         title: script.title,
         partsTotal,
-        provider,
-        voice: narrationCfg?.voice,
-        speed: narrationCfg?.speed,
+        voice,
         card,
       });
       partsDone++;
     } catch (err) {
       logger.error({ err, runId, part: part.index }, "scheduler part failed");
+      const message = err instanceof Error ? err.message : String(err);
+      partErrors.push(`Parte ${part.index}: ${message}`);
+      // Cota esgotada (mensagem do renderer) vale pras partes seguintes também — não adianta tentar.
+      if (/cota .*esgotada/i.test(message) && part.index < partsTotal) {
+        partErrors.push(`Partes ${part.index + 1} a ${partsTotal} não foram geradas (mesma cota).`);
+        await updateRun(runId, { partsDone, error: partErrors.join("\n") });
+        break;
+      }
     }
 
-    await updateRun(runId, { partsDone });
+    await updateRun(runId, { partsDone, ...(partErrors.length && { error: partErrors.join("\n") }) });
     broadcastRun(userId, { id: runId, schedulerId, status: "rendering", partsDone, partsTotal });
   }
 

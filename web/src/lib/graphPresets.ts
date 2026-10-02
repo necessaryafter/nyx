@@ -34,7 +34,7 @@ reddit.nodes = [
   { id: "background", kind: "source", type: "AssetSource", config: { assetIds: [], assetType: "video" } },
   { id: "on-sentence", kind: "event", type: "OnSentence", config: {} },
   { id: "subtitle", kind: "action", type: "SetSubtitleStyle", config: { wordsPerGroup: 2, style: { position: "center", fontSize: 72, color: "#ffffff", strokeColor: "#000000", strokeWidth: 8, highlightColor: "#FFD700" } } },
-  { id: "title-card", kind: "action", type: "ShowTitleCard", config: { subreddit: "r/historias", username: "", timeAgo: "há 5h", flair: "", upvotes: "18.4k", comments: "1.2k" } },
+  { id: "title-card", kind: "action", type: "ShowTitleCard", config: { auto: ["subreddit", "username", "timeAgo", "flair", "upvotes", "comments"], subreddit: "", username: "", timeAgo: "", flair: "", upvotes: "", comments: "" } },
   { id: "render", kind: "output", type: "Render", config: {} },
 ];
 reddit.edges = [

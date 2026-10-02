@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { applySchedulerOverrides, planPartAssetIds, randomEngagement, type SchedulerCardContext } from "../lib/scheduler/overrides";
+import { graphSchema, validateGraphStructure } from "../lib/schemas";
+import { applySchedulerOverrides, planPartAssetIds, randomEngagement, resolveSchedulerVoice, type SchedulerCardContext } from "../lib/scheduler/overrides";
 import { estimateRun } from "../lib/scheduler/estimate";
 import type { GraphInput } from "../lib/schemas";
 
@@ -119,7 +120,7 @@ describe("applySchedulerOverrides", () => {
     expect(music?.type === "MusicSource" && music.config.assetIds).toEqual([UUID_NEW_MUSIC]);
   });
 
-  it("part 1 of a multi-part series keeps the plain title on the card", () => {
+  it("part 1 of a multi-part series also gets '— Parte 1' on the card, like the other parts", () => {
     const out = applySchedulerOverrides(baseGraph(), {
       assetIds: [],
       assetMode: "random-loop",
@@ -131,7 +132,7 @@ describe("applySchedulerOverrides", () => {
       card: SAMPLE_CARD,
     });
     const card = out.nodes.find((n) => n.id === "card");
-    expect(card?.type === "ShowTitleCard" && card.config.title).toBe("Um título");
+    expect(card?.type === "ShowTitleCard" && card.config.title).toBe("Um título — Parte 1");
   });
 
   it("part 3 of a multi-part series appends '— Parte 3' to the card title", () => {
@@ -231,12 +232,22 @@ describe("planPartAssetIds", () => {
     expect(plan).toEqual([[A, B, C], [A, B, C], [A, B, C]]);
   });
 
-  it("splits the pool round-robin across parts when noRepeatAcrossParts is true", () => {
-    const plan = planPartAssetIds([A, B, C], 2, { randomize: true, noRepeatAcrossParts: true });
-    expect(plan).toEqual([[A, C], [B]]);
-    // nenhum id aparece em mais de uma parte
-    const seen = new Set<string>();
-    for (const part of plan) for (const id of part) expect(seen.has(id) ? "repeated" : seen.add(id)).not.toBe("repeated");
+  it("noRepeat: cada parte recebe a lista inteira, começando num bloco diferente", () => {
+    const ids = ["a", "b", "c", "d", "e", "f"];
+    const plan = planPartAssetIds(ids, 3, { randomize: false, noRepeatAcrossParts: true, nameById: new Map(ids.map((x) => [x, x])) });
+    expect(plan).toEqual([
+      ["a", "b", "c", "d", "e", "f"],
+      ["c", "d", "e", "f", "a", "b"],
+      ["e", "f", "a", "b", "c", "d"],
+    ]);
+  });
+
+  it("noRepeat + aleatório: cada parte tem todos os vídeos, sem repetir dentro dela, e começos diferentes", () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `v${i}`);
+    const plan = planPartAssetIds(ids, 5, { randomize: true, noRepeatAcrossParts: true });
+    for (const part of plan) expect(new Set(part).size).toBe(20);
+    expect(new Set(plan.map((p) => p.slice(0, 4).join())).size).toBe(5); // blocos iniciais distintos
+    expect(new Set(plan.flatMap((p) => p.slice(0, 4))).size).toBe(20); // e sem sobreposição entre eles
   });
 
   it("sorts by asset name when randomize is false", () => {
@@ -283,5 +294,142 @@ describe("estimateRun", () => {
   it("estimates words per part at the given rate", () => {
     const result = estimateRun({ mode: "parts", partsCount: 2, minutesPerPart: 1, wordsPerMinute: 150 });
     expect(result.wordsPerPart).toBe(150);
+  });
+});
+
+describe("resolveSchedulerVoice", () => {
+  const template = { mode: "job-input" as const, provider: "edge" as const, voice: "pt-BR-AntonioNeural", speed: 1.4 };
+
+  it("sem voz no scheduler usa a do template", () => {
+    expect(resolveSchedulerVoice(template, null)).toMatchObject({ provider: "edge", voice: "pt-BR-AntonioNeural", speed: 1.4 });
+  });
+
+  it("voz do scheduler substitui a do template inteira (não mistura voz do edge no gemini)", () => {
+    const v = resolveSchedulerVoice(template, { provider: "gemini", voice: "Algenib", model: "gemini-3.8-flash-lite-tts", stylePreset: "lento" });
+    expect(v).toEqual({ provider: "gemini", voice: "Algenib", speed: undefined, model: "gemini-3.8-flash-lite-tts", paceMode: undefined, stylePreset: "lento", style: undefined });
+  });
+
+  it("provider que não é edge/gemini continua virando talkify, como antes", () => {
+    expect(resolveSchedulerVoice({ mode: "job-input", provider: "custom" }, undefined).provider).toBe("talkify");
+    expect(resolveSchedulerVoice(undefined, undefined).provider).toBe("talkify");
+  });
+});
+
+describe("card com campos automáticos (auto)", () => {
+  const withAuto = (config: Record<string, unknown>) => {
+    const g = baseGraph();
+    return { ...g, nodes: g.nodes.map((n) => (n.id === "card" ? { ...n, config } : n)) };
+  };
+
+  it("o grafo guarda o auto ao salvar (não é descartado pela validação)", () => {
+    const parsed = graphSchema.safeParse(withAuto({ auto: ["upvotes", "comments"], subreddit: "r/slayer" }));
+    expect(parsed.success).toBe(true);
+    const card = parsed.success ? parsed.data.nodes.find((n) => n.id === "card") : undefined;
+    expect(card?.type === "ShowTitleCard" && card.config).toEqual({ auto: ["upvotes", "comments"], subreddit: "r/slayer" });
+  });
+
+  it("recusa campo desconhecido em auto", () => {
+    expect(graphSchema.safeParse(withAuto({ auto: ["foo"] })).success).toBe(false);
+  });
+
+  it("no scheduler os valores da IA/sorteio preenchem todos os campos, mesmo com auto no template", () => {
+    const out = applySchedulerOverrides(withAuto({ auto: ["subreddit", "username", "flair", "upvotes", "comments", "timeAgo"] }) as never, {
+      assetIds: [],
+      assetMode: "random-loop",
+      musicAssetIds: [],
+      backgroundSpeed: 1,
+      title: "T",
+      partIndex: 1,
+      partsTotal: 1,
+      card: SAMPLE_CARD,
+    });
+    const card = out.nodes.find((n) => n.id === "card");
+    const cfg = card?.type === "ShowTitleCard" ? card.config : undefined;
+    for (const key of ["subreddit", "username", "flair", "upvotes", "comments", "timeAgo"] as const) {
+      expect(cfg?.[key]).toBe(SAMPLE_CARD[key]); // preenchido => o renderer não sorteia por cima
+    }
+  });
+});
+
+describe("validateGraphStructure: nó de vídeo sem assets", () => {
+  const noAssets = () => {
+    const g = baseGraph();
+    return { ...g, nodes: g.nodes.map((n) => (n.id === "bg" && n.type === "AssetSource" ? { ...n, config: { ...n.config, assetIds: [] } } : n)) } as GraphInput;
+  };
+
+  it("criar o vídeo exige assets (padrão)", () => {
+    expect(validateGraphStructure(noAssets()).some((e) => e.includes("no assets assigned"))).toBe(true);
+  });
+
+  it("salvar o template aceita sem assets (o scheduler fornece os vídeos)", () => {
+    expect(validateGraphStructure(noAssets(), { requireAssets: false })).toEqual([]);
+  });
+});
+
+describe("identidade do cartão: campo fixo do template x automático", () => {
+  const run = (config: Record<string, unknown>) => {
+    const g = baseGraph();
+    const graph = { ...g, nodes: g.nodes.map((n) => (n.id === "card" ? { ...n, config } : n)) } as GraphInput;
+    const out = applySchedulerOverrides(graph, {
+      assetIds: [], assetMode: "random-loop", musicAssetIds: [], backgroundSpeed: 1,
+      title: "T", partIndex: 1, partsTotal: 1, card: SAMPLE_CARD,
+    });
+    const card = out.nodes.find((n) => n.id === "card");
+    return card?.type === "ShowTitleCard" ? card.config : undefined;
+  };
+
+  it("template com auto: o campo fixo vale, os automáticos vêm da IA/sorteio", () => {
+    const cfg = run({ auto: ["subreddit", "flair", "upvotes", "comments", "timeAgo"], username: "reddit-slayer" });
+    expect(cfg?.username).toBe("reddit-slayer");
+    expect(cfg?.subreddit).toBe(SAMPLE_CARD.subreddit);
+    expect(cfg?.flair).toBe(SAMPLE_CARD.flair);
+    expect(cfg?.upvotes).toBe(SAMPLE_CARD.upvotes);
+  });
+
+  it("template com auto: campo vazio e fora do auto também recebe o valor do scheduler", () => {
+    expect(run({ auto: [], username: "" })?.username).toBe(SAMPLE_CARD.username);
+  });
+
+  it("template antigo (sem auto): o scheduler substitui tudo, como sempre", () => {
+    const cfg = run({ username: "reddit-slayer", subreddit: "r/slayer" });
+    expect(cfg?.username).toBe(SAMPLE_CARD.username);
+    expect(cfg?.subreddit).toBe(SAMPLE_CARD.subreddit);
+  });
+});
+
+describe("etapa ShowWatermark (marca d'água do vídeo)", () => {
+  const withWatermark = (config: Record<string, unknown>) => {
+    const g = baseGraph();
+    return { ...g, nodes: [...g.nodes, { id: "wm", kind: "action", type: "ShowWatermark", config }] };
+  };
+
+  it("o grafo aceita a etapa e guarda a configuração", () => {
+    const cfg = { assetId: UUID_BG, widthPercent: 12, opacity: 0.8, marginPercent: 6 };
+    const parsed = graphSchema.safeParse(withWatermark(cfg));
+    expect(parsed.success).toBe(true);
+    const wm = parsed.success ? parsed.data.nodes.find((n) => n.id === "wm") : undefined;
+    expect(wm?.type === "ShowWatermark" && wm.config).toEqual(cfg);
+  });
+
+  it("aceita sem imagem escolhida (assetId null ou ausente)", () => {
+    expect(graphSchema.safeParse(withWatermark({ assetId: null })).success).toBe(true);
+    expect(graphSchema.safeParse(withWatermark({})).success).toBe(true);
+  });
+
+  it("recusa tamanho, opacidade e margem fora dos limites e assetId que não é uuid", () => {
+    expect(graphSchema.safeParse(withWatermark({ widthPercent: 90 })).success).toBe(false);
+    expect(graphSchema.safeParse(withWatermark({ widthPercent: 1 })).success).toBe(false);
+    expect(graphSchema.safeParse(withWatermark({ opacity: 0 })).success).toBe(false);
+    expect(graphSchema.safeParse(withWatermark({ marginPercent: 50 })).success).toBe(false);
+    expect(graphSchema.safeParse(withWatermark({ assetId: "nao-e-uuid" })).success).toBe(false);
+  });
+
+  it("o scheduler não mexe na marca d'água do template", () => {
+    const out = applySchedulerOverrides(withWatermark({ assetId: UUID_BG, widthPercent: 12 }) as never, {
+      assetIds: [], assetMode: "random-loop", musicAssetIds: [], backgroundSpeed: 1,
+      title: "T", partIndex: 1, partsTotal: 1, card: SAMPLE_CARD,
+    });
+    const wm = out.nodes.find((n) => n.id === "wm");
+    expect(wm?.type === "ShowWatermark" && wm.config).toEqual({ assetId: UUID_BG, widthPercent: 12 });
   });
 });

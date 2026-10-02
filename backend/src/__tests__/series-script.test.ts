@@ -6,6 +6,7 @@ import {
   assembleParts,
   generateSeriesScript,
   findRepeatedTitle,
+  expandThemeChoices,
 } from "../lib/ai/seriesScript";
 import * as geminiLib from "../lib/ai/gemini";
 
@@ -43,6 +44,22 @@ describe("applyCta", () => {
 
   it("keeps existing punctuation", () => {
     expect(applyCta("Vem pra parte {next}!", 1, 3)).toBe("Vem pra parte 2!");
+  });
+});
+
+describe("expandThemeChoices", () => {
+  it("picks one option per {a|b|c} group, trimmed", () => {
+    expect(expandThemeChoices("O traidor é {minha esposa | meu irmão | meu sócio}.", () => 0)).toBe("O traidor é minha esposa.");
+    expect(expandThemeChoices("O traidor é {minha esposa | meu irmão | meu sócio}.", () => 0.99)).toBe("O traidor é meu sócio.");
+  });
+
+  it("draws each group independently", () => {
+    const rolls = [0, 0.99];
+    expect(expandThemeChoices("{a|b} e {c|d}", () => rolls.shift()!)).toBe("a e d");
+  });
+
+  it("leaves text without a pipe group untouched", () => {
+    expect(expandThemeChoices("Sem sorteio {aqui} nem ali.", () => 0)).toBe("Sem sorteio {aqui} nem ali.");
   });
 });
 
@@ -86,6 +103,22 @@ describe("assembleParts", () => {
 
     expect(parts[1]!.text).toBe("Eu sou o babaca? Parte 2. corpo 2 Curta e comente para a parte 3.");
     expect(parts[2]!.text.startsWith("Eu sou o babaca? Parte final. corpo 3")).toBe(true);
+  });
+
+  it("finalPartLabel troca o texto da última parte e aceita {n}/{total}", () => {
+    const base = { ctaTemplate: "Curta e comente para a parte {next}.", finalPartEnabled: true, targetWords };
+    const custom = assembleParts("Eu sou o babaca?", ["corpo 1", "corpo 2", "corpo 3"], { ...base, finalPartLabel: "Encerrando a história" });
+    expect(custom[2]!.text.startsWith("Eu sou o babaca? Encerrando a história. corpo 3")).toBe(true);
+    const withVars = assembleParts("T", ["a", "b", "c"], { ...base, finalPartLabel: "Parte {n} de {total}, a última!" });
+    expect(withVars[2]!.text.startsWith("T. Parte 3 de 3, a última! c")).toBe(true);
+    expect(withVars[1]!.text).toBe("T. Parte 2. b Curta e comente para a parte 3."); // intermediárias não mudam
+  });
+
+  it("finalPartLabel vazio/em branco cai em 'Parte final.' e é ignorado com finalPartEnabled=false", () => {
+    const empty = assembleParts("T", ["a", "b"], { ctaTemplate: "x {next}", finalPartEnabled: true, finalPartLabel: "   ", targetWords: [10, 10] });
+    expect(empty[1]!.text.startsWith("T. Parte final. b")).toBe(true);
+    const off = assembleParts("T", ["a", "b"], { ctaTemplate: "x {next}", finalPartEnabled: false, finalPartLabel: "Fim", targetWords: [10, 10] });
+    expect(off[1]!.text.startsWith("T. Parte 2. b")).toBe(true);
   });
 
   it("finalPartEnabled=false (default): last part still says 'Parte N.'", () => {

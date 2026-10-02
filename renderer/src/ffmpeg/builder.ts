@@ -3,11 +3,13 @@ import { extname, join } from "path";
 import { logger } from "@nyx/shared";
 import { run } from "./runner";
 import { probeDuration } from "./probe";
+import { detectFrozenTail } from "./freeze";
 import { zoomShakeFilter } from "./filters/zoom";
 import { applyTransitions } from "./filters/transition";
 import { buildSubtitleFilter } from "./filters/subtitle";
 import { prepareOverlayClips, buildOverlayFilterChain } from "./filters/overlay";
 import { renderTitleCard } from "./filters/titleCard";
+import { renderWatermark } from "./filters/watermark";
 import type { RenderPlan, PendingSfx } from "../compile/index";
 
 const IMAGE_EXTS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
@@ -154,7 +156,8 @@ async function buildPoolTrack(plan: RenderPlan, workDir: string): Promise<string
   // Duração de cada fonte já na timeline final (vídeo acelerado dura menos). Só ffprobe,
   // nada é decodificado aqui.
   const durations = await Promise.all(
-    mediaPool.map(async (p) => (isImage(p) ? targetDuration / imageCount : (await probeDuration(p)) / poolSpeed)),
+    // Vídeo: desconta o final congelado da gravação (imagem parada nos últimos ~1,5s).
+    mediaPool.map(async (p) => (isImage(p) ? targetDuration / imageCount : ((await probeDuration(p)) - (await detectFrozenTail(p))) / poolSpeed)),
   );
 
   const overlap = transition && mediaPool.length > 1 ? transition.duration : 0;
@@ -224,6 +227,7 @@ async function composite(
   const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=${fps}`;
 
   const titleCard = plan.titleCard ? await renderTitleCard(plan.titleCard, workDir, width, height) : undefined;
+  const watermark = plan.watermark ? await renderWatermark(plan.watermark, workDir, width, height) : undefined;
   // Enquanto o card está na tela o título já aparece nele, então a legenda começa depois.
   const subtitleTimestamps = plan.titleCard ? plan.timestamps.slice(plan.titleCard.wordCount) : plan.timestamps;
 
@@ -237,7 +241,7 @@ async function composite(
 
   const outFile = join(workDir, "composited.mp4");
 
-  if (preparedOverlays.length === 0 && !subtitleFilter && !titleCard) {
+  if (preparedOverlays.length === 0 && !subtitleFilter && !titleCard && !watermark) {
     await run([
       "-y", "-i", baseVideo,
       "-vf", scaleFilter,
@@ -248,7 +252,7 @@ async function composite(
     return outFile;
   }
 
-  const { inputArgs, filterComplex, finalLabel } = buildOverlayFilterChain(preparedOverlays, subtitleFilter, titleCard);
+  const { inputArgs, filterComplex, finalLabel } = buildOverlayFilterChain(preparedOverlays, subtitleFilter, titleCard, watermark);
 
   const scaledLabel = "v_scaled";
   const fullFilter = `[0:v]${scaleFilter}[${scaledLabel}];` +

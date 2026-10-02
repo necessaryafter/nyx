@@ -11,6 +11,7 @@ export interface SeriesScriptInput {
   ctaTemplate?: string;
   finalCtaTemplate?: string;
   finalPartEnabled?: boolean;
+  finalPartLabel?: string; // frase da última parte no lugar de "Parte N." (vale com finalPartEnabled); vazio = "Parte final."
   avoidTitles?: string[];
   avoidPremises?: string[]; // começo das histórias já usadas (mesma ordem de avoidTitles)
   wordsPerMinute?: number;
@@ -57,6 +58,17 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+/**
+ * Sorteia uma opção de cada `{a|b|c}` do tema. O modelo ignora "varie" no prompt e cai
+ * sempre no arquétipo mais provável; sortear em código garante variação de verdade.
+ */
+export function expandThemeChoices(theme: string, rand: () => number = Math.random): string {
+  return theme.replace(/\{([^{}]*\|[^{}]*)\}/g, (_, group: string) => {
+    const options = group.split("|").map((o) => o.trim());
+    return options[Math.floor(rand() * options.length)]!;
+  });
+}
+
 function titleTokens(title: string): Set<string> {
   const words = title
     .toLowerCase()
@@ -97,7 +109,7 @@ export function wordBudget(minutes: number, wpm: number, overheadWords: number):
  * Regra (todas as partes 2..N, inclusive a última, repetem o título falado
  * junto com "Parte N."; só a última troca o CTA de "próxima parte" pelo CTA
  * final, que é opcional; se `finalPartEnabled` estiver ligado, a última parte
- * fala "Parte final." em vez de "Parte N."):
+ * fala `finalPartLabel` (padrão "Parte final.") em vez de "Parte N."):
  *   parte 1:        "{title} {body} {cta(1)}"              (sem cta se for parte única)
  *   parte 2..N-1:   "{title} Parte {n}. {body} {cta(n)}"
  *   parte N (final):"{title} Parte {N ou "final"}. {body} {finalCta?}" (parte 1 se N=1: "{title} {body} {finalCta?}")
@@ -105,7 +117,7 @@ export function wordBudget(minutes: number, wpm: number, overheadWords: number):
 export function assembleParts(
   title: string,
   bodies: string[],
-  opts: { ctaTemplate: string; finalCtaTemplate?: string; finalPartEnabled?: boolean; targetWords: number[] },
+  opts: { ctaTemplate: string; finalCtaTemplate?: string; finalPartEnabled?: boolean; finalPartLabel?: string; targetWords: number[] },
 ): SeriesScriptPart[] {
   const total = bodies.length;
   const cleanTitle = /[.!?]$/.test(title.trim()) ? title.trim() : `${title.trim()}.`;
@@ -120,7 +132,7 @@ export function assembleParts(
     const opener = isFirst
       ? cleanTitle
       : isLast && opts.finalPartEnabled
-        ? `${cleanTitle} Parte final.`
+        ? `${cleanTitle} ${applyCta(opts.finalPartLabel?.trim() || "Parte final.", n, total)}`
         : `${cleanTitle} Parte ${n}.`;
     const cta = isLast
       ? (opts.finalCtaTemplate ? applyCta(opts.finalCtaTemplate, n, total) : "")
@@ -243,7 +255,9 @@ async function callGemini(
   return parseSeriesJson(response.text ?? "", input.parts);
 }
 
-export async function generateSeriesScript(input: SeriesScriptInput): Promise<SeriesScript> {
+export async function generateSeriesScript(rawInput: SeriesScriptInput): Promise<SeriesScript> {
+  // Uma vez só por execução: as retentativas usam o mesmo sorteio.
+  const input = { ...rawInput, theme: expandThemeChoices(rawInput.theme) };
   const wpm = input.wordsPerMinute ?? DEFAULT_WPM;
   const ctaTemplate = input.ctaTemplate ?? DEFAULT_CTA;
 
@@ -274,7 +288,7 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
   let parts = assembleParts(
     raw.title,
     raw.parts.map((p) => p.text),
-    { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, targetWords: targetWordsPerPart },
+    { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, finalPartLabel: input.finalPartLabel, targetWords: targetWordsPerPart },
   );
 
   // Uma única retentativa, só para a primeira parte fora do orçamento.
@@ -291,7 +305,7 @@ export async function generateSeriesScript(input: SeriesScriptInput): Promise<Se
       parts = assembleParts(
         raw.title,
         raw.parts.map((p) => p.text),
-        { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, targetWords: targetWordsPerPart },
+        { ctaTemplate, finalCtaTemplate: input.finalCtaTemplate, finalPartEnabled: input.finalPartEnabled, finalPartLabel: input.finalPartLabel, targetWords: targetWordsPerPart },
       );
     }
   }

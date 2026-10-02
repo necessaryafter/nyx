@@ -1,21 +1,64 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { PaginatedResponse, Asset } from "../lib/types";
+import type { PaginatedResponse, Asset, AssetCategories } from "../lib/types";
+
+type AssetType = "video" | "audio" | "text" | "image";
+
+function filterQuery(type?: AssetType, search?: string, category?: string) {
+  let q = "";
+  if (type) q += `&type=${type}`;
+  if (search) q += `&search=${encodeURIComponent(search)}`;
+  if (category !== undefined) q += `&category=${encodeURIComponent(category)}`;
+  return q;
+}
 
 export function useAssets(
   page: number,
-  type?: "video" | "audio" | "text" | "image",
+  type?: AssetType,
   search?: string,
+  category?: string, // undefined = todas, NO_CATEGORY = avulsos, senão nome da categoria
+  limit = 20,
 ) {
-  const limit = 20;
   const offset = page * limit;
   return useQuery({
-    queryKey: ["assets", "list", page, type, search],
-    queryFn: () => {
-      let url = `/api/assets?limit=${limit}&offset=${offset}`;
-      if (type) url += `&type=${type}`;
-      if (search) url += `&search=${encodeURIComponent(search)}`;
-      return api.get<PaginatedResponse<Asset>>(url);
+    queryKey: ["assets", "list", page, type, search, category, limit],
+    queryFn: () => api.get<PaginatedResponse<Asset>>(`/api/assets?limit=${limit}&offset=${offset}${filterQuery(type, search, category)}`),
+  });
+}
+
+/** Categorias com contagem (e quantos avulsos), opcionalmente só de um tipo. */
+export function useAssetCategories(type?: AssetType) {
+  return useQuery({
+    queryKey: ["assets", "categories", type],
+    queryFn: () => api.get<AssetCategories>(`/api/assets/categories${type ? `?type=${type}` : ""}`),
+  });
+}
+
+/** Todos os ids de um filtro, sem paginar — usado pelo "marcar todos" do seletor. */
+export function fetchAssetIds(type?: AssetType, search?: string, category?: string) {
+  return api
+    .get<{ data: { id: string; name: string }[] }>(`/api/assets/ids?${filterQuery(type, search, category).slice(1)}`)
+    .then((r) => r.data.map((a) => a.id));
+}
+
+export function useMoveAsset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, category }: { id: string; category: string | null }) =>
+      api.put<Asset>(`/api/assets/${id}`, { category }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["assets"] }),
+  });
+}
+
+export function useResetAssets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{ deleted: number; schedulersUpdated: number; templatesUpdated: number }>("/api/assets/reset", { confirm: "RESETAR" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assets"] });
+      qc.invalidateQueries({ queryKey: ["schedulers"] });
+      qc.invalidateQueries({ queryKey: ["templates"] });
     },
   });
 }
@@ -24,17 +67,19 @@ export function useAssetCounts() {
   return useQuery({
     queryKey: ["assets", "counts"],
     queryFn: async () => {
-      const [all, video, audio, text] = await Promise.all([
+      const [all, video, audio, text, image] = await Promise.all([
         api.get<PaginatedResponse<Asset>>("/api/assets?limit=1&offset=0"),
         api.get<PaginatedResponse<Asset>>("/api/assets?limit=1&offset=0&type=video"),
         api.get<PaginatedResponse<Asset>>("/api/assets?limit=1&offset=0&type=audio"),
         api.get<PaginatedResponse<Asset>>("/api/assets?limit=1&offset=0&type=text"),
+        api.get<PaginatedResponse<Asset>>("/api/assets?limit=1&offset=0&type=image"),
       ]);
       return {
         all: all.total,
         video: video.total,
         audio: audio.total,
         text: text.total,
+        image: image.total,
       };
     },
     staleTime: 30_000,
@@ -79,12 +124,13 @@ const CHUNKED_THRESHOLD = 20 * 1024 * 1024; // use chunked for files >= 20 MB
 // CORS on the backend already allows localhost:5173 with credentials.
 const UPLOAD_ORIGIN = import.meta.env.DEV ? "http://localhost:3000" : "";
 
-function uploadAssetSingle(file: File, type: string, onProgress?: (pct: number) => void): Promise<Asset> {
+function uploadAssetSingle(file: File, type: string, category: string | null, onProgress?: (pct: number) => void): Promise<Asset> {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("name", file.name);
     formData.append("type", type);
+    if (category) formData.append("category", category);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/assets/upload");
@@ -143,12 +189,12 @@ async function uploadChunkWithRetry(
   throw lastError;
 }
 
-async function uploadAssetChunked(file: File, type: string, onProgress?: (pct: number) => void): Promise<Asset> {
+async function uploadAssetChunked(file: File, type: string, category: string | null, onProgress?: (pct: number) => void): Promise<Asset> {
   const startRes = await fetch(`${UPLOAD_ORIGIN}/api/assets/upload/multipart/start`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: file.name, type }),
+    body: JSON.stringify({ name: file.name, type, category }),
   });
   if (!startRes.ok) {
     const err = await startRes.json().catch(() => ({})) as { error?: string };
@@ -182,22 +228,24 @@ async function uploadAssetChunked(file: File, type: string, onProgress?: (pct: n
   return completeRes.json() as Promise<Asset>;
 }
 
-function uploadAsset(file: File, onProgress?: (pct: number) => void): Promise<Asset> {
+function uploadAsset(file: File, category: string | null, onProgress?: (pct: number) => void): Promise<Asset> {
   let type: "video" | "audio" | "text" | "image" = "text";
   if (file.type.startsWith("video/")) type = "video";
   else if (file.type.startsWith("audio/")) type = "audio";
   else if (file.type.startsWith("image/")) type = "image";
 
   if (file.size >= CHUNKED_THRESHOLD) {
-    return uploadAssetChunked(file, type, onProgress);
+    return uploadAssetChunked(file, type, category, onProgress);
   }
-  return uploadAssetSingle(file, type, onProgress);
+  return uploadAssetSingle(file, type, category, onProgress);
 }
 
+/** Aceita só o File (asset avulso, como sempre) ou { file, category } pra subir já dentro de uma categoria. */
 export function useUploadAsset(onProgress?: (pct: number) => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => uploadAsset(file, onProgress),
+    mutationFn: (input: File | { file: File; category?: string | null }) =>
+      input instanceof File ? uploadAsset(input, null, onProgress) : uploadAsset(input.file, input.category?.trim() || null, onProgress),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["assets"] });
     },

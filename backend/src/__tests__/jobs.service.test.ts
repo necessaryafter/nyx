@@ -75,6 +75,19 @@ describe("startAudio", () => {
     expect(mockAudioQueue.add).toHaveBeenCalled();
   });
 
+  it("repassa a config inteira do gemini (modelo, voz, estilo) pra fila de áudio", async () => {
+    const job = { ...JOB_ROW, status: "draft" as const };
+    mockDatabase.select.mockReturnValueOnce(chainResult([{ total: "100" }]));
+    const narration = {
+      type: "tts" as const, text: "oi", provider: "gemini" as const,
+      voice: "Charon", model: "gemini-3.8-flash-lite-tts", paceMode: "style" as const, stylePreset: "rapido" as const,
+    };
+
+    await startAudio("user-test-123", job, narration);
+
+    expect(mockAudioQueue.add).toHaveBeenCalledWith("audio", { jobId: job.id, narration });
+  });
+
   it("resolves the storage key for type=audio and skips the credit check", async () => {
     const job = { ...JOB_ROW, status: "draft" as const };
     mockDatabase.select.mockReturnValueOnce(chainResult([ASSET_ROW]));

@@ -2,6 +2,7 @@ import { extname, join } from "path";
 import { run } from "../runner";
 import type { PendingOverlay } from "../../compile/overlays";
 import type { RenderedTitleCard } from "./titleCard";
+import type { RenderedWatermark } from "./watermark";
 
 export interface PreparedOverlay extends PendingOverlay {
   clipPath: string; // converted to video clip
@@ -46,8 +47,9 @@ export function buildOverlayFilterChain(
   overlays: PreparedOverlay[],
   subtitleFilter: string | undefined,
   card?: RenderedTitleCard,
+  watermark?: RenderedWatermark,
 ): { inputArgs: string[]; filterComplex: string; finalLabel: string } {
-  if (overlays.length === 0 && !subtitleFilter && !card) {
+  if (overlays.length === 0 && !subtitleFilter && !card && !watermark) {
     return { inputArgs: [], filterComplex: "", finalLabel: "0:v" };
   }
 
@@ -58,6 +60,9 @@ export function buildOverlayFilterChain(
   // "-loop 1" no input: no ffmpeg 7 isso deadlocka o overlay no meio do vídeo (trava
   // sempre no mesmo frame, 0% CPU, ignora SIGTERM) e ainda deixa o encode ~50x mais lento.
   if (card) inputArgs.push("-i", card.path);
+  // A marca d'água também é um PNG de um frame só. Aqui NÃO precisa de loop: sem "enable" o overlay repete o
+  // último frame da imagem até o fim do vídeo (eof_action=repeat é o padrão).
+  if (watermark) inputArgs.push("-i", watermark.path);
 
   const filterParts: string[] = [];
   let currentLabel = "0:v";
@@ -65,7 +70,7 @@ export function buildOverlayFilterChain(
   for (let i = 0; i < overlays.length; i++) {
     const overlay = overlays[i]!;
     const inputIdx = i + 1;
-    const isLast = i === overlays.length - 1 && !subtitleFilter && !card;
+    const isLast = i === overlays.length - 1 && !subtitleFilter && !card && !watermark;
     const outLabel = isLast ? "v_final" : `v_ov${i}`;
 
     if (overlay.opacity < 1.0) {
@@ -86,13 +91,22 @@ export function buildOverlayFilterChain(
   if (card) {
     // Sem fade-in: o card já está inteiro no frame 0. Só some com fade no final.
     const fade = 0.2;
-    const outLabel = subtitleFilter ? "v_card" : "v_final";
+    const outLabel = subtitleFilter || watermark ? "v_card" : "v_final";
     filterParts.push(
       `[${overlays.length + 1}:v]format=rgba,loop=loop=${Math.max(0, Math.ceil(card.endSeconds * 30) - 1)}:size=1,setpts=N/30/TB,fade=t=out:st=${Math.max(0, card.endSeconds - fade)}:d=${fade}:alpha=1[card]`,
     );
     filterParts.push(
       `[${currentLabel}][card]overlay=${card.x}:${card.y}:enable='between(t,${card.startSeconds},${card.endSeconds})'[${outLabel}]`,
     );
+    currentLabel = outLabel;
+  }
+
+  if (watermark) {
+    // Do primeiro ao último frame, sem fade. Fica por baixo da legenda.
+    const inputIdx = overlays.length + 1 + (card ? 1 : 0);
+    const outLabel = subtitleFilter ? "v_wm" : "v_final";
+    filterParts.push(`[${inputIdx}:v]format=rgba[wm]`);
+    filterParts.push(`[${currentLabel}][wm]overlay=${watermark.x}:${watermark.y}[${outLabel}]`);
     currentLabel = outLabel;
   }
 

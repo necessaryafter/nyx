@@ -6,7 +6,8 @@ import { assets } from "../database/schema/assets";
 import { creditTransactions } from "../database/schema/credits";
 import { renderQueue, audioQueue } from "./queue";
 import { RENDER_CREDITS_PER_MIN, TTS_CREDITS_PER_MIN } from "./credits";
-import { graphSchema, validateGraphStructure, type GraphInput } from "./schemas";
+import type { z } from "zod";
+import { graphSchema, validateGraphStructure, startAudioSchema, type GraphInput } from "./schemas";
 
 /**
  * Extraído de routes/jobs.ts pro job-scheduler poder criar/tocar jobs de dentro
@@ -24,13 +25,11 @@ type JobRow = typeof jobs.$inferSelect;
 interface AudioJobData {
   jobId: string;
   narration:
-    | { type: "tts"; text: string; provider: "talkify" | "edge"; voice?: string; speed?: number }
+    | Extract<StartAudioNarration, { type: "tts" }>
     | { type: "audio"; assetStorageKey: string };
 }
 
-export type StartAudioNarration =
-  | { type: "tts"; text: string; provider: "talkify" | "edge"; voice?: string; speed?: number }
-  | { type: "audio"; assetId: string };
+export type StartAudioNarration = z.infer<typeof startAudioSchema>["narration"];
 
 /** Injeta o audioKey pré-computado no NarrationSource como provider=precomputed. */
 export function injectPrecomputedAudio(graph: GraphInput, audioKey: string): GraphInput {
@@ -127,13 +126,7 @@ export async function startAudio(
     if (!asset) throw new HttpError(404, { error: "audio asset not found" });
     audioJobNarration = { type: "audio", assetStorageKey: asset.storageKey };
   } else {
-    audioJobNarration = {
-      type: "tts",
-      text: narration.text,
-      provider: narration.provider,
-      voice: narration.voice,
-      speed: narration.speed,
-    };
+    audioJobNarration = narration; // tts vai inteiro (provider, voz, modelo/estilo do gemini...)
   }
 
   const bullJob = await audioQueue.add("audio", { jobId: job.id, narration: audioJobNarration });

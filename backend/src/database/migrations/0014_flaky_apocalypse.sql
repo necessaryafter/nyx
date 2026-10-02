@@ -1,0 +1,1 @@
+ALTER TABLE "schedulers" ADD COLUMN IF NOT EXISTS "final_part_label" text DEFAULT 'Parte final.' NOT NULL;

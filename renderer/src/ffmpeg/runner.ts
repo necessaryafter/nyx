@@ -33,3 +33,14 @@ export function run(args: string[]): Promise<void> {
     });
   });
 }
+
+/** Roda o ffmpeg só pra ler o que ele imprime no stderr (filtros de detecção: silêncio, freeze). */
+export function ffmpegStderr(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn("ffmpeg", ["-nostats", ...args], { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    proc.stderr.on("data", (c) => { stderr += c.toString(); });
+    proc.on("close", () => resolve(stderr));
+    proc.on("error", reject);
+  });
+}

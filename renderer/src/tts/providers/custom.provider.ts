@@ -36,22 +36,27 @@ export class CustomAudioProvider extends BaseTTSProvider {
 
     logger.info({ hasText: !!text, alignOnly: !!config.providerConfig?.segments }, "CustomAudio: calling whisperx-service");
 
-    const form = new FormData();
-    form.append("audio", new Blob([await readFile(audioFile)]), "audio.wav");
-    const segments = config.providerConfig?.segments as ScriptSegment[] | undefined;
-    if (segments?.length) form.append("segments", JSON.stringify(segments));
-
-    const res = await fetch(`${WHISPERX_URL}/transcribe`, { method: "POST", body: form });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => res.statusText);
-      throw new Error(`whisperx-service error (${res.status}): ${detail}`);
-    }
-
-    const { words } = (await res.json()) as { words: WordTimestamp[] };
+    const audio = await readFile(audioFile);
+    const words = await transcribeWords(audio, config.providerConfig?.segments as ScriptSegment[] | undefined);
 
     logger.info({ words: words.length }, "CustomAudio: transcription complete");
 
-    const audio = await readFile(audioFile);
     return { audio, wordTimestamps: words };
   }
+}
+
+/** Tempo de cada palavra via whisperx. Com `segments`, só alinha o texto dado (não transcreve). */
+export async function transcribeWords(audio: Buffer, segments?: ScriptSegment[]): Promise<WordTimestamp[]> {
+  const form = new FormData();
+  form.append("audio", new Blob([audio]), "audio.wav");
+  if (segments?.length) form.append("segments", JSON.stringify(segments));
+
+  const res = await fetch(`${WHISPERX_URL}/transcribe`, { method: "POST", body: form });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => res.statusText);
+    throw new Error(`whisperx-service error (${res.status}): ${detail}`);
+  }
+
+  const { words } = (await res.json()) as { words: WordTimestamp[] };
+  return words;
 }

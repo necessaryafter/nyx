@@ -3,10 +3,17 @@ import { z } from "zod";
 export const uploadAssetSchema = z.object({
   name: z.string().min(1),
   type: z.enum(["video", "audio", "text", "image"]),
+  category: z.string().optional(), // vazio/ausente = avulso
 });
 
-export const renameAssetSchema = z.object({
-  name: z.string().min(1).max(200),
+// Renomear e/ou mover de categoria. category: null (ou "") tira o asset da categoria.
+export const updateAssetSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  category: z.string().max(200).nullable().optional(),
+}).refine((v) => v.name !== undefined || v.category !== undefined, { message: "name or category required" });
+
+export const resetAssetsSchema = z.object({
+  confirm: z.literal("RESETAR"),
 });
 
 const renderSettingsSchema = z.object({
@@ -19,12 +26,21 @@ const renderSettingsSchema = z.object({
 
 const assetTypeSchema = z.enum(["video", "audio", "image"]);
 
-const narrationSourceConfigSchema = z.object({
-  mode: z.enum(["job-input", "tts", "audio", "precomputed"]).default("job-input"),
-  text: z.string().min(1).optional(),
-  provider: z.enum(["talkify", "custom", "precomputed", "edge"]).default("talkify"),
+// Campos de voz compartilhados: nó Narração, startAudio e override de voz do scheduler.
+export const voiceFieldsSchema = z.object({
   voice: z.string().optional(),
   speed: z.number().positive().optional(),
+  // Só gemini:
+  model: z.string().optional(),
+  paceMode: z.enum(["style", "slider"]).optional(),
+  stylePreset: z.enum(["rapido", "moderado", "lento", "custom"]).optional(),
+  style: z.string().max(2000).optional(),
+});
+
+const narrationSourceConfigSchema = voiceFieldsSchema.extend({
+  mode: z.enum(["job-input", "tts", "audio", "precomputed"]).default("job-input"),
+  text: z.string().min(1).optional(),
+  provider: z.enum(["talkify", "custom", "precomputed", "edge", "gemini"]).default("talkify"),
   audioKey: z.string().optional(),
   providerConfig: z.record(z.string(), z.unknown()).optional(),
 });
@@ -149,6 +165,10 @@ const cameraEffectConfigSchema = z.object({
 });
 
 const showTitleCardConfigSchema = z.object({
+  // Campos que o renderer sorteia a cada vídeo quando estão vazios (valor preenchido sempre vence).
+  auto: z.array(z.enum(["subreddit", "username", "timeAgo", "flair", "upvotes", "comments"])).optional(),
+  // Imagem (asset) no lugar da letra do avatar; o renderer recorta e redimensiona. Sumiu = volta pra letra.
+  avatarAssetId: z.string().uuid().nullable().optional(),
   subreddit: z.string().optional(),
   username: z.string().optional(),
   timeAgo: z.string().optional(),
@@ -159,6 +179,14 @@ const showTitleCardConfigSchema = z.object({
   // frase da narração (útil pra "Parte N." — muito curto pra virar título sozinho).
   title: z.string().optional(),
   minDurationMs: z.number().positive().optional(),
+});
+
+// Marca d'água do vídeo (não do card): imagem pequena no canto inferior direito, do primeiro ao último frame.
+const showWatermarkConfigSchema = z.object({
+  assetId: z.string().uuid().nullable().optional(), // sem imagem (ou asset apagado) = sem marca
+  widthPercent: z.number().min(3).max(50).optional(), // % da largura do vídeo (default 14)
+  opacity: z.number().min(0.1).max(1).optional(), // default 1
+  marginPercent: z.number().min(0).max(20).optional(), // distância das bordas, % da largura (default 4)
 });
 
 const renderConfigSchema = z.object({});
@@ -181,6 +209,7 @@ const blueprintNodeSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("SetMusic"), config: setMusicConfigSchema }),
   z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("CameraEffect"), config: cameraEffectConfigSchema }),
   z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("ShowTitleCard"), config: showTitleCardConfigSchema }),
+  z.object({ id: z.string(), kind: z.literal("action"), type: z.literal("ShowWatermark"), config: showWatermarkConfigSchema }),
   z.object({ id: z.string(), kind: z.literal("output"), type: z.literal("Render"), config: renderConfigSchema }),
 ]);
 
@@ -216,7 +245,11 @@ const EDGE_RULES = new Set([
   "source:output",
 ]);
 
-export function validateGraphStructure(graph: GraphInput): string[] {
+/**
+ * `requireAssets: false` (salvar template) aceita o nó de vídeo sem assets: quem manda os vídeos pode ser o
+ * scheduler, e o usuário só escolhe antes de renderizar. Na criação do job continua obrigatório.
+ */
+export function validateGraphStructure(graph: GraphInput, opts: { requireAssets?: boolean } = {}): string[] {
   const errors: string[] = [];
   const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
 
@@ -235,7 +268,7 @@ export function validateGraphStructure(graph: GraphInput): string[] {
     errors.push("graph must have a visual source (SceneSource or AssetSource) or SetMedia action");
   }
 
-  if (!hasSceneSource && visualAssetSource && visualAssetSource.type === "AssetSource" && visualAssetSource.config.assetIds.length === 0) {
+  if (opts.requireAssets !== false && !hasSceneSource && visualAssetSource && visualAssetSource.type === "AssetSource" && visualAssetSource.config.assetIds.length === 0) {
     errors.push("AssetSource has no assets assigned — add media files to the template before rendering");
   }
 
@@ -286,12 +319,10 @@ export const createDraftJobSchema = z.object({
 
 export const startAudioSchema = z.object({
   narration: z.discriminatedUnion("type", [
-    z.object({
+    voiceFieldsSchema.extend({
       type: z.literal("tts"),
       text: z.string().min(1),
-      provider: z.enum(["talkify", "edge"]),
-      voice: z.string().optional(),
-      speed: z.number().positive().optional(),
+      provider: z.enum(["talkify", "edge", "gemini"]),
     }),
     z.object({ type: z.literal("audio"), assetId: z.string().uuid() }),
   ]),
@@ -309,6 +340,12 @@ export const updateSlotsSchema = z.object({
 
 // ── job-scheduler ──
 
+/** Voz própria do scheduler; quando definida, substitui a do nó Narração do template inteira. */
+export const schedulerNarrationSchema = voiceFieldsSchema.extend({
+  provider: z.enum(["edge", "gemini"]),
+});
+export type SchedulerNarration = z.infer<typeof schedulerNarrationSchema>;
+
 const schedulerBaseSchema = z.object({
   name: z.string().min(1).max(80),
   templateId: z.string().uuid(),
@@ -322,9 +359,11 @@ const schedulerBaseSchema = z.object({
   noRepeatAssetsAcrossParts: z.boolean().default(false),
   randomizeAssetOrder: z.boolean().default(true),
   backgroundSpeed: z.number().min(0.5).max(2.5).default(1),
+  narration: schedulerNarrationSchema.nullable().optional(), // null = usa a voz do template
   ctaTemplate: z.string().min(1).max(200).default("Curta e comente para a parte {next}."),
   finalCtaTemplate: z.string().max(200).optional(),
   finalPartEnabled: z.boolean().default(false),
+  finalPartLabel: z.string().max(100).optional(), // vazio = "Parte final."
   aiModel: z.string().min(1).max(80),
   cronPattern: z.string().nullable().optional(),
   timezone: z.string().min(1).default("America/Sao_Paulo"),
@@ -376,6 +415,7 @@ export const paginationSchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   type: z.enum(["video", "audio", "text", "image"]).optional(),
   search: z.string().optional(),
+  category: z.string().optional(), // nome exato; "__none__" = só avulsos; ausente = todos
 });
 
 export const creditFilterSchema = z.object({

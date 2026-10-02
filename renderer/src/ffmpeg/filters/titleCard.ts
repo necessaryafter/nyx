@@ -1,4 +1,4 @@
-import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, loadImage, type SKRSContext2D } from "@napi-rs/canvas";
 import { writeFile } from "fs/promises";
 import { join } from "path";
 import type { TitleCardPlan } from "../../compile/titleCard";
@@ -23,6 +23,12 @@ export interface RenderedTitleCard {
   y: number;
   startSeconds: number;
   endSeconds: number;
+}
+
+/** Recorte quadrado central da imagem (o que "cover" faria num círculo): qualquer proporção vira o avatar sem distorcer. */
+export function coverCrop(width: number, height: number): { sx: number; sy: number; size: number } {
+  const size = Math.min(width, height);
+  return { sx: Math.round((width - size) / 2), sy: Math.round((height - size) / 2), size };
 }
 
 /** Desenha o card (PNG com alpha) e devolve onde ele entra no vídeo. Medidas base: vídeo de 1080px de largura. */
@@ -72,15 +78,27 @@ export async function renderTitleCard(
   // Cabeçalho: avatar + r/sub · tempo + u/usuário
   const avCx = PAD + AVATAR / 2;
   const avCy = PAD + AVATAR / 2;
-  ctx.fillStyle = C.orange;
-  ctx.beginPath();
-  ctx.arc(avCx, avCy, AVATAR / 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.font = `bold ${px(34)}px ${FONT}`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText((subreddit.replace(/^r\//i, "")[0] ?? "r").toUpperCase(), avCx, avCy + px(2));
+  const avatar = plan.avatarPath ? await loadImage(plan.avatarPath).catch(() => undefined) : undefined; // imagem ruim: cai na letra
+  if (avatar) {
+    const { sx, sy, size } = coverCrop(avatar.width, avatar.height);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avCx, avCy, AVATAR / 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(avatar, sx, sy, size, size, avCx - AVATAR / 2, avCy - AVATAR / 2, AVATAR, AVATAR);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = C.orange;
+    ctx.beginPath();
+    ctx.arc(avCx, avCy, AVATAR / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = `bold ${px(34)}px ${FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText((subreddit.replace(/^r\//i, "")[0] ?? "r").toUpperCase(), avCx, avCy + px(2));
+  }
 
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { NarrationSourceConfig } from "../../lib/types";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Play, Loader2, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -19,15 +20,15 @@ export function RenderModal() {
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<"tts" | "audio">("tts");
-  const [ttsProvider, setTtsProvider] = useState<"talkify" | "edge">("talkify");
+  const [ttsProvider, setTtsProvider] = useState<"talkify" | "edge" | "gemini">("talkify");
 
   // Começa pelo que o template já define na Narração (provider, voz, velocidade).
   const narrationCfg = nodes.find((n) => n.data?.type === "NarrationSource")?.data?.config as
-    | { provider?: string; voice?: string; speed?: number }
+    | NarrationSourceConfig
     | undefined;
   const templateProvider = narrationCfg?.provider;
   useEffect(() => {
-    if (templateProvider === "edge" || templateProvider === "talkify") setTtsProvider(templateProvider);
+    if (templateProvider === "edge" || templateProvider === "talkify" || templateProvider === "gemini") setTtsProvider(templateProvider);
   }, [templateProvider]);
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -49,7 +50,11 @@ export function RenderModal() {
       const draft = await api.post<{ id: string }>("/api/jobs/draft", { templateId });
       const narration =
         mode === "tts"
-          ? { type: "tts" as const, text, provider: ttsProvider, voice: narrationCfg?.voice, speed: narrationCfg?.speed }
+          ? {
+              // Config de voz do template só vale pro mesmo provider (voz do edge não existe no gemini).
+              ...(ttsProvider === templateProvider ? narrationCfg : {}),
+              type: "tts" as const, text, provider: ttsProvider,
+            }
           : { type: "audio" as const, assetId: "" };
       await api.post(`/api/jobs/${draft.id}/audio`, { narration });
       close();
@@ -140,7 +145,7 @@ export function RenderModal() {
                 )}
                 {mode === "tts" && (
                   <div className="mt-2 flex gap-1 rounded-lg border border-nyx-border bg-nyx-void p-0.5">
-                    {(["talkify", "edge"] as const).map((p) => (
+                    {(["talkify", "edge", "gemini"] as const).map((p) => (
                       <button
                         key={p}
                         onClick={() => setTtsProvider(p)}
@@ -151,7 +156,7 @@ export function RenderModal() {
                             : "text-nyx-text-muted hover:text-nyx-text-secondary",
                         )}
                       >
-                        {p === "talkify" ? "Talkify" : "Edge TTS (gratuito)"}
+                        {p === "talkify" ? "Talkify" : p === "edge" ? "Edge TTS (gratuito)" : "Gemini TTS"}
                       </button>
                     ))}
                   </div>

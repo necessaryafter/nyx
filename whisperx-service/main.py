@@ -38,20 +38,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-def flatten_words(result: dict, segs: list[dict], known: list[dict]) -> list[dict]:
+def flatten_words(aligned: list[list[dict]], segs: list[dict], known: list[dict]) -> list[dict]:
     """Palavras alinhadas; as sem tempo (números, símbolos) herdam dos vizinhos em vez de sumirem.
 
-    `segs` são as janelas de busca com padding (±150ms) passadas pro whisperx.align — a folga
-    ajuda o alinhamento a pegar uma palavra que comece um pouco antes/depois do limite estimado
-    da frase. Mas sem clamp, duas frases vizinhas com pausa natural menor que o padding total
-    (300ms) acabam com janelas sobrepostas, e o whisperx pode devolver a última palavra de uma
-    frase com `end` invadindo o começo da próxima — dois eventos de legenda ficam ativos ao
-    mesmo tempo (ver groupWords em subtitle.ts). Por isso clampamos aqui no limite ORIGINAL
+    `aligned[i]` são as palavras da frase `known[i]`, alinhadas sozinhas na janela `segs[i]`
+    (com padding de ±150ms). Cada frase é alinhada numa chamada própria porque o whisperx.align
+    quebra um segmento em sentenças (`indo?", perguntei` vira duas) e a resposta deixa de ser
+    1:1 com a entrada — casar por índice deslocava todas as frases seguintes e as palavras
+    ficavam presas no limite da janela (legenda travada ou sumida).
+
+    O padding ajuda a pegar uma palavra que comece um pouco antes/depois do limite estimado.
+    Mas duas frases vizinhas com pausa menor que o padding total (300ms) teriam janelas
+    sobrepostas, e a última palavra de uma invadiria a próxima — dois eventos de legenda ativos
+    ao mesmo tempo (ver groupWords em subtitle.ts). Por isso o clamp é no limite ORIGINAL
     (sem padding) da frase vizinha, não no limite da própria janela com padding.
     """
     words = []
-    for i, (seg_in, seg) in enumerate(zip(segs, result.get("segments", []))):
-        items = seg.get("words", [])
+    for i, (seg_in, items) in enumerate(zip(segs, aligned)):
         lo = known[i - 1]["endMs"] / 1000 if i > 0 else seg_in["start"]
         hi = known[i + 1]["startMs"] / 1000 if i + 1 < len(known) else seg_in["end"]
         for j, w in enumerate(items):
@@ -106,15 +109,18 @@ async def transcribe(audio: UploadFile = File(...), segments: str | None = Form(
                 }
                 for k in known
             ]
-            result = whisperx.align(
-                segs,
-                state["align_model"],
-                state["align_metadata"],
-                audio_data,
-                DEVICE,
-                return_char_alignments=False,
-            )
-            return JSONResponse({"words": flatten_words(result, segs, known)})
+            aligned = [
+                [w for r in whisperx.align(
+                    [seg],
+                    state["align_model"],
+                    state["align_metadata"],
+                    audio_data,
+                    DEVICE,
+                    return_char_alignments=False,
+                ).get("segments", []) for w in r.get("words", [])]
+                for seg in segs
+            ]
+            return JSONResponse({"words": flatten_words(aligned, segs, known)})
 
         # Step 1: Transcribe
         result = state["model"].transcribe(

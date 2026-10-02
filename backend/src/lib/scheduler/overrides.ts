@@ -1,4 +1,4 @@
-import type { GraphInput } from "../schemas";
+import type { GraphInput, SchedulerNarration } from "../schemas";
 
 export interface SchedulerCardContext {
   subreddit: string;
@@ -50,17 +50,52 @@ export function planPartAssetIds(
 ): string[][] {
   if (assetIds.length === 0) return Array.from({ length: partsTotal }, () => []);
 
-  const ordered = opts.randomize
-    ? assetIds
-    : [...assetIds].sort((a, b) => (opts.nameById?.get(a) ?? "").localeCompare(opts.nameById?.get(b) ?? ""));
-
   if (!opts.noRepeatAcrossParts) {
+    const ordered = opts.randomize
+      ? assetIds
+      : [...assetIds].sort((a, b) => (opts.nameById?.get(a) ?? "").localeCompare(opts.nameById?.get(b) ?? ""));
     return Array.from({ length: partsTotal }, () => ordered);
   }
 
-  const buckets: string[][] = Array.from({ length: partsTotal }, () => []);
-  ordered.forEach((id, i) => buckets[i % partsTotal]!.push(id));
-  return buckets;
+  // Lista inteira pra cada parte, cada uma começando num bloco diferente (o renderer consome
+  // em ordem: assetMode "sequential"). Antes dividia em grupos fixos — 20 vídeos / 5 partes
+  // = 4 por parte, que cobriam ~1 min de uma parte de 3 e repetiam 3x dentro dela. Assim
+  // nada repete dentro da parte enquanto houver vídeo novo, e entre partes só sobrepõe
+  // quando os vídeos não dão pra todas.
+  const ordered = opts.randomize
+    ? shuffle(assetIds)
+    : [...assetIds].sort((a, b) => (opts.nameById?.get(a) ?? "").localeCompare(opts.nameById?.get(b) ?? ""));
+  const block = Math.ceil(ordered.length / partsTotal);
+  return Array.from({ length: partsTotal }, (_, i) => {
+    const start = (i * block) % ordered.length;
+    return [...ordered.slice(start), ...ordered.slice(0, start)];
+  });
+}
+
+function shuffle<T>(list: T[]): T[] {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
+const CARD_FIELDS = ["subreddit", "username", "flair", "upvotes", "comments", "timeAgo"] as const;
+
+/**
+ * Identidade do cartão de uma parte. Template que já usa o "Auto" por campo (config.auto definido): campo
+ * fixo (preenchido e fora do auto) vale o do template, e só os automáticos recebem o valor da IA/sorteio.
+ * Template antigo (sem config.auto): o scheduler preenche tudo, como sempre foi.
+ */
+function cardIdentity(templateConfig: { auto?: string[] } & Partial<Record<(typeof CARD_FIELDS)[number], string>>, scheduler: SchedulerCardContext): SchedulerCardContext {
+  if (templateConfig.auto === undefined) return scheduler;
+  const out = { ...scheduler };
+  for (const key of CARD_FIELDS) {
+    const fixed = templateConfig[key]?.trim();
+    if (fixed && !templateConfig.auto.includes(key)) out[key] = fixed;
+  }
+  return out;
 }
 
 /**
@@ -69,8 +104,9 @@ export function planPartAssetIds(
  * de testar: mesma entrada, mesma saída.
  */
 export function applySchedulerOverrides(graph: GraphInput, ctx: SchedulerOverrideContext): GraphInput {
-  const cardTitle =
-    ctx.partsTotal > 1 && ctx.partIndex > 1 ? `${ctx.title} — Parte ${ctx.partIndex}` : ctx.title;
+  // Série com várias partes: o card de TODAS leva "— Parte N", inclusive a 1 (assim a 1 combina com as outras).
+  // Execução de uma parte só não tem número.
+  const cardTitle = ctx.partsTotal > 1 ? `${ctx.title} — Parte ${ctx.partIndex}` : ctx.title;
 
   const nodes = graph.nodes.map((node) => {
     if (node.type === "AssetSource" && (node.config.assetType === "video" || node.config.assetType === "image")) {
@@ -84,11 +120,32 @@ export function applySchedulerOverrides(graph: GraphInput, ctx: SchedulerOverrid
     }
 
     if (node.type === "ShowTitleCard") {
-      return { ...node, config: { ...node.config, ...ctx.card, title: cardTitle, minDurationMs: 2500 } };
+      return { ...node, config: { ...node.config, ...cardIdentity(node.config, ctx.card), title: cardTitle, minDurationMs: 2500 } };
     }
 
     return node;
   });
 
   return { ...graph, nodes };
+}
+
+type NarrationConfig = Extract<GraphInput["nodes"][number], { type: "NarrationSource" }>["config"];
+
+/**
+ * Voz de cada parte: a do scheduler, se tiver, substitui a do template inteira (não mescla —
+ * nome de voz do Edge não serve pro Gemini e vice-versa). Provider desconhecido cai em
+ * talkify, como sempre foi.
+ */
+export function resolveSchedulerVoice(template: NarrationConfig | undefined, override: SchedulerNarration | null | undefined) {
+  const cfg = override ?? template;
+  const provider = cfg?.provider === "edge" || cfg?.provider === "gemini" ? cfg.provider : ("talkify" as const);
+  return {
+    provider,
+    voice: cfg?.voice,
+    speed: cfg?.speed,
+    model: cfg?.model,
+    paceMode: cfg?.paceMode,
+    stylePreset: cfg?.stylePreset,
+    style: cfg?.style,
+  };
 }
